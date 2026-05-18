@@ -216,7 +216,7 @@
         <label class="file-label" for="importJson">导入参数</label>
         <input id="importJson" type="file" accept="application/json">
         <button id="exportCsv">导出明细CSV</button>
-        <button class="danger" id="resetData">恢复示例</button>
+        <button class="danger" id="resetData">恢复空白模板</button>
       </div>
     </div>
   </header>
@@ -373,65 +373,53 @@
     const scenarios = ["日常", "小促", "大促"];
     const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
     const money2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const storageKey = "profitCalculatorStateBMBlankV1";
 
     const defaultState = {
       project: {
-        name: "Dexter TH 业务目标测算",
-        period: "Jun-2026",
-        gmv: 1800000,
-        targetROI: 2,
-        returnRate: 0.05,
-        nonResaleReturnRate: 0.30,
+        name: "",
+        period: "",
+        gmv: 0,
+        targetROI: 0,
+        returnRate: 0,
+        nonResaleReturnRate: 0,
         returnProcessCost: 0,
-        adSpend: 500000,
-        creatorBuying: 800000,
-        sampleCost: 18000,
+        adSpend: 0,
+        creatorBuying: 0,
+        sampleCost: 0,
         otherCost: 0,
-        agencyRate: 0.10,
-        logisticsRate: 0.06,
-        lossRate: 0.02,
-        platformInfraPerOrder: 1.07,
-        platformCommissionRate: 0.1177,
-        transactionRate: 0.0321,
-        commerceGrowthRate: 0.0803,
-        bcdFlashRate: 0.0321,
-        resourcePackRate: 0.01,
-        sfpRate: 0.005,
-        voucherXtraRate: 0.005,
-        creatorCommissionRate: 0.08
+        agencyRate: 0,
+        logisticsRate: 0,
+        lossRate: 0,
+        platformInfraPerOrder: 0,
+        platformCommissionRate: 0,
+        transactionRate: 0,
+        commerceGrowthRate: 0,
+        bcdFlashRate: 0,
+        resourcePackRate: 0,
+        sfpRate: 0,
+        voucherXtraRate: 0,
+        creatorCommissionRate: 0
       },
-      scenarioShares: { "日常": 0.50, "小促": 0.20, "大促": 0.30 },
+      scenarioShares: { "日常": 0, "小促": 0, "大促": 0 },
       unitSpace: { sceneFilter: "全部", adjustments: {} },
-      skus: [
-        { sku: "SKU001", name: "示例姜黄产品", enabled: true, listPrice: 349, cost: 36, giftCost: 0, unitPerOrder: 1, salesShare: 0.45, cofund: true, coupons: { "日常": 50, "小促": 100, "大促": 150 } },
-        { sku: "SKU002", name: "示例面霜产品", enabled: true, listPrice: 499, cost: 78, giftCost: 0, unitPerOrder: 1, salesShare: 0.30, cofund: true, coupons: { "日常": 60, "小促": 120, "大促": 180 } },
-        { sku: "SKU003", name: "示例小王子产品", enabled: true, listPrice: 299, cost: 42, giftCost: 0, unitPerOrder: 1, salesShare: 0.25, cofund: false, coupons: { "日常": 40, "小促": 80, "大促": 120 } }
-      ],
+      skus: [],
       storeCoupon: { newUser: 0 },
-      cartDeals: [
-        { name: "示例凑单包", enabled: true, scene: "大促", skuMix: "SKU001:2,SKU002:1", threshold: 499, discount: 80, giftCost: 36, orderShare: 0.10, cofund: true }
-      ],
-      cofundRules: [
-        { name: "12% off", scene: "大促", discountRate: 0.12, threshold: 199, cap: 200, platformShare: 0.40, merchantShare: 0.60 },
-        { name: "15% off cap250", scene: "大促", discountRate: 0.15, threshold: 999, cap: 250, platformShare: 0.50, merchantShare: 0.50 },
-        { name: "15% off cap600", scene: "大促", discountRate: 0.15, threshold: 300, cap: 600, platformShare: 0.40, merchantShare: 0.60 },
-        { name: "20% off", scene: "大促", discountRate: 0.20, threshold: 390, cap: 350, platformShare: 0.40, merchantShare: 0.60 },
-        { name: "25% off cap750", scene: "大促", discountRate: 0.25, threshold: 399, cap: 750, platformShare: 0.40, merchantShare: 0.60 },
-        { name: "35% off", scene: "大促", discountRate: 0.35, threshold: 100, cap: 1000, platformShare: 0.60, merchantShare: 0.40 }
-      ],
+      cartDeals: [],
+      cofundRules: [],
       manual: { adSpend: "", creatorBuying: "", fixedOther: "", settlementIncome: "", aov: "", roas: "" }
     };
 
     let state = loadState();
 
     function loadState() {
-      const raw = localStorage.getItem("profitCalculatorState");
+      const raw = localStorage.getItem(storageKey);
       if (!raw) return structuredClone(defaultState);
       try { return { ...structuredClone(defaultState), ...JSON.parse(raw) }; }
       catch { return structuredClone(defaultState); }
     }
     function saveState() {
-      localStorage.setItem("profitCalculatorState", JSON.stringify(state));
+      localStorage.setItem(storageKey, JSON.stringify(state));
     }
     function num(v, fallback = 0) {
       const n = Number(v);
@@ -1003,20 +991,20 @@
       };
     });
     document.getElementById("addSku").onclick = () => {
-      state.skus.push({ sku: "SKU" + String(state.skus.length + 1).padStart(3, "0"), name: "新产品", enabled: true, listPrice: 299, cost: 50, giftCost: 0, unitPerOrder: 1, salesShare: 0.1, cofund: true, coupons: { "日常": 0, "小促": 0, "大促": 0 } });
+      state.skus.push({ sku: "SKU" + String(state.skus.length + 1).padStart(3, "0"), name: "", enabled: true, listPrice: 0, cost: 0, giftCost: 0, unitPerOrder: 1, salesShare: 0, cofund: false, coupons: { "日常": 0, "小促": 0, "大促": 0 } });
       saveState(); render();
     };
     document.getElementById("addCartDeal").onclick = () => {
       if (!state.cartDeals) state.cartDeals = [];
-      state.cartDeals.push({ name: "新凑单场景", enabled: true, scene: "大促", skuMix: "SKU001:1,SKU002:1", threshold: 499, discount: 80, giftCost: 0, orderShare: 0.05, cofund: true });
+      state.cartDeals.push({ name: "", enabled: true, scene: "大促", skuMix: "", threshold: 0, discount: 0, giftCost: 0, orderShare: 0, cofund: false });
       saveState(); render();
     };
     document.getElementById("addCofund").onclick = () => {
-      state.cofundRules.push({ name: "新共资券", scene: "大促", discountRate: 0.1, threshold: 100, cap: 100, platformShare: 0.5, merchantShare: 0.5 });
+      state.cofundRules.push({ name: "", scene: "大促", discountRate: 0, threshold: 0, cap: 0, platformShare: 0, merchantShare: 0 });
       saveState(); render();
     };
     document.getElementById("resetData").onclick = () => {
-      if (confirm("确认恢复示例数据？当前输入会被覆盖。")) { state = structuredClone(defaultState); saveState(); render(); }
+      if (confirm("确认恢复空白模板？当前输入会被覆盖。")) { state = structuredClone(defaultState); saveState(); render(); }
     };
     document.getElementById("exportJson").onclick = () => download("profit-calculator-params.json", JSON.stringify(state, null, 2), "application/json");
     document.getElementById("importJson").onchange = async e => {
