@@ -373,7 +373,7 @@
     const scenarios = ["日常", "小促", "大促"];
     const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
     const money2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const storageKey = "profitCalculatorStateBMBlankV1";
+    const storageKey = "profitCalculatorStateBMBlankV2";
 
     const defaultState = {
       project: {
@@ -391,14 +391,14 @@
         agencyRate: 0,
         logisticsRate: 0,
         lossRate: 0,
-        platformInfraPerOrder: 0,
-        platformCommissionRate: 0,
-        transactionRate: 0,
-        commerceGrowthRate: 0,
-        bcdFlashRate: 0,
-        resourcePackRate: 0,
-        sfpRate: 0,
-        voucherXtraRate: 0,
+        platformInfraPerOrder: 1.07,
+        platformCommissionRate: 0.1177,
+        transactionRate: 0.0321,
+        commerceGrowthRate: 0.0803,
+        bcdFlashRate: 0.0321,
+        resourcePackRate: 0.01,
+        sfpRate: 0.005,
+        voucherXtraRate: 0.005,
         creatorCommissionRate: 0
       },
       scenarioShares: { "日常": 0, "小促": 0, "大促": 0 },
@@ -406,7 +406,14 @@
       skus: [],
       storeCoupon: { newUser: 0 },
       cartDeals: [],
-      cofundRules: [],
+      cofundRules: [
+        { name: "12% off", scene: "大促", discountRate: 0.12, threshold: 199, cap: 200, platformShare: 0.40, merchantShare: 0.60 },
+        { name: "15% off cap250", scene: "大促", discountRate: 0.15, threshold: 999, cap: 250, platformShare: 0.50, merchantShare: 0.50 },
+        { name: "15% off cap600", scene: "大促", discountRate: 0.15, threshold: 300, cap: 600, platformShare: 0.40, merchantShare: 0.60 },
+        { name: "20% off", scene: "大促", discountRate: 0.20, threshold: 390, cap: 350, platformShare: 0.40, merchantShare: 0.60 },
+        { name: "25% off cap750", scene: "大促", discountRate: 0.25, threshold: 399, cap: 750, platformShare: 0.40, merchantShare: 0.60 },
+        { name: "35% off", scene: "大促", discountRate: 0.35, threshold: 100, cap: 1000, platformShare: 0.60, merchantShare: 0.40 }
+      ],
       manual: { adSpend: "", creatorBuying: "", fixedOther: "", settlementIncome: "", aov: "", roas: "" }
     };
 
