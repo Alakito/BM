@@ -1166,7 +1166,10 @@
       if (!sbClient) return;
       await sbClient.auth.signOut();
       currentUser = null;
+      state = structuredClone(defaultState);
+      localStorage.removeItem(storageKey);
       updateAuthUi();
+      render();
     };
     document.getElementById("cloudSaveBtn").onclick = () => saveCloudData(true);
     document.getElementById("exportCsv").onclick = () => {
