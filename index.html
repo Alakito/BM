@@ -1,1193 +1,227 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>BM-TikTok Shop TH 项目利润测算器</title>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BM 运营工具中心</title>
   <style>
     :root {
-      --ink: #17212b;
-      --muted: #5f6c78;
-      --line: #d9e2ea;
+      --bg: #eef3f8;
       --panel: #ffffff;
-      --soft: #f5f8fb;
-      --blue: #1f4e79;
-      --green: #287a4b;
-      --red: #b23a3a;
-      --amber: #a16012;
-      --input: #fff4cc;
-      --calc: #e9f4e4;
-      --warn: #fde8dc;
-      --shadow: 0 8px 28px rgba(28, 45, 62, .08);
+      --text: #0f172a;
+      --muted: #64748b;
+      --line: #dbe3ef;
+      --brand: #5b45e8;
+      --brand2: #7c3aed;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      color: var(--ink);
-      background: #eef3f7;
-      font-family: "Microsoft YaHei", "Segoe UI", Arial, sans-serif;
-      font-size: 14px;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #f5f7ff, #edf7f8);
+      color: var(--text);
+      font-family: Inter, system-ui, "Microsoft YaHei", Arial, sans-serif;
     }
-    header {
+    .shell {
+      display: grid;
+      grid-template-columns: 248px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+    aside {
       position: sticky;
       top: 0;
-      z-index: 4;
-      background: var(--blue);
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      gap: 18px;
+      padding: 22px 16px;
+      background: rgba(255,255,255,.86);
+      border-right: 1px solid var(--line);
+      backdrop-filter: blur(12px);
+    }
+    .brand {
+      padding: 8px 8px 16px;
+      border-bottom: 1px solid var(--line);
+    }
+    .brand h1 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    .brand p {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+    }
+    .nav {
+      display: grid;
+      gap: 10px;
+    }
+    .nav button {
+      width: 100%;
+      display: grid;
+      gap: 4px;
+      text-align: left;
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 13px 14px;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 900;
+    }
+    .nav button span {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .nav button.active {
       color: #fff;
-      box-shadow: var(--shadow);
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow: 0 16px 32px rgba(91,69,232,.22);
+    }
+    .nav button.active span { color: rgba(255,255,255,.78); }
+    .tip {
+      margin-top: auto;
+      padding: 12px;
+      border: 1px solid #c7d2fe;
+      border-radius: 14px;
+      background: #eef2ff;
+      color: #3730a3;
+      font-size: 12px;
+      line-height: 1.6;
+      font-weight: 800;
+    }
+    main {
+      min-width: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
     }
     .topbar {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 16px;
-      max-width: 1680px;
-      margin: 0 auto;
-      padding: 12px 18px;
+      padding: 16px 22px;
+      background: rgba(255,255,255,.72);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
     }
-    h1 {
-      margin: 0;
-      font-size: 18px;
-      font-weight: 700;
-      letter-spacing: 0;
-    }
-    .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
-    .auth-box {
-      display: flex;
-      gap: 6px;
-      align-items: center;
-      flex-wrap: wrap;
-      padding-left: 8px;
-      border-left: 1px solid rgba(255,255,255,.28);
-    }
-    .auth-box input {
-      width: 150px;
-      padding: 7px 8px;
-      background: #fff;
-    }
-    .auth-box .auth-status {
-      min-width: 120px;
-      color: #dcecff;
-      font-size: 12px;
-    }
-    button, .file-label {
-      border: 1px solid #b9c8d5;
-      background: #fff;
-      color: var(--ink);
-      border-radius: 6px;
-      padding: 8px 11px;
-      font: inherit;
-      cursor: pointer;
-      line-height: 1;
-      white-space: nowrap;
-    }
-    button.primary { background: #dcecff; border-color: #93b7dc; }
-    button.danger { color: var(--red); }
-    button.small { padding: 5px 8px; font-size: 12px; }
-    input[type=file] { display: none; }
-    main {
-      max-width: 1680px;
-      margin: 0 auto;
-      padding: 14px 18px 36px;
-    }
-    .tabs {
-      display: flex;
-      gap: 6px;
-      margin: 4px 0 14px;
-      overflow-x: auto;
-    }
-    .tab {
-      background: #dfeaf2;
-      border-color: #c3d2df;
-      color: #20364a;
-    }
-    .tab.active { background: #fff; border-bottom-color: #fff; font-weight: 700; }
-    section.view { display: none; }
-    section.view.active { display: block; }
-    .grid {
+    .title {
       display: grid;
-      gap: 12px;
-    }
-    .grid.two { grid-template-columns: minmax(420px, 1fr) minmax(520px, 1.25fr); }
-    .grid.three { grid-template-columns: repeat(3, minmax(260px, 1fr)); }
-    .panel {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      box-shadow: var(--shadow);
-      overflow: hidden;
-    }
-    .panel h2 {
-      margin: 0;
-      background: var(--blue);
-      color: #fff;
-      font-size: 15px;
-      padding: 9px 11px;
-    }
-    .panel-body { padding: 12px; }
-    .kpis {
-      display: grid;
-      grid-template-columns: repeat(5, minmax(160px, 1fr));
-      gap: 10px;
-      margin-bottom: 14px;
-    }
-    .kpi {
-      background: #fff;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 10px;
-      min-height: 74px;
-      box-shadow: var(--shadow);
-    }
-    .kpi .label { color: var(--muted); font-size: 12px; margin-bottom: 6px; }
-    .kpi .value { font-size: 22px; font-weight: 700; }
-    .kpi .sub { color: var(--muted); font-size: 12px; margin-top: 5px; }
-    .good { color: var(--green); }
-    .bad { color: var(--red); }
-    .mid { color: var(--amber); }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      table-layout: fixed;
-      background: #fff;
-    }
-    th, td {
-      border: 1px solid var(--line);
-      padding: 6px 7px;
-      vertical-align: middle;
-      overflow-wrap: anywhere;
-    }
-    th {
-      background: #d9eaf7;
-      font-weight: 700;
-      text-align: left;
-    }
-    td.num, th.num { text-align: right; }
-    td.center, th.center { text-align: center; }
-    td.input-cell, .input-cell { background: var(--input); }
-    td.calc-cell, .calc-cell { background: var(--calc); }
-    td.warn-cell, .warn-cell { background: var(--warn); }
-    input, select {
-      width: 100%;
+      gap: 4px;
       min-width: 0;
-      border: 1px solid #c3ced8;
-      border-radius: 5px;
-      padding: 5px 6px;
-      font: inherit;
+    }
+    .title b {
+      font-size: 18px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .title span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .actions {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .actions a {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      padding: 9px 12px;
+      color: var(--text);
+      text-decoration: none;
+      font-size: 13px;
+      font-weight: 900;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: 0;
       background: #fff;
     }
-    .input-cell input, .input-cell select { background: #fffaf0; }
-    .row-actions { display: flex; gap: 5px; justify-content: center; }
-    .scroll {
-      overflow: auto;
-      max-height: 68vh;
-      border: 1px solid var(--line);
-    }
-    .scroll table { border: 0; }
-    .sticky th {
-      position: sticky;
-      top: 0;
-      z-index: 2;
-    }
-    .note {
-      color: var(--muted);
-      font-size: 12px;
-      line-height: 1.55;
-    }
-    .split {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-    }
-    .bar {
-      height: 8px;
-      background: #e6edf4;
-      border-radius: 10px;
-      overflow: hidden;
-      margin-top: 6px;
-    }
-    .bar > span { display: block; height: 100%; background: var(--blue); }
-    .status {
-      display: inline-block;
-      border-radius: 999px;
-      padding: 3px 8px;
-      font-size: 12px;
-      font-weight: 700;
-      background: #e9f4e4;
-      color: var(--green);
-    }
-    .status.bad { background: #fde8dc; color: var(--red); }
-    .status.mid { background: #fff4cc; color: var(--amber); }
-    @media (max-width: 980px) {
-      .grid.two, .grid.three, .split { grid-template-columns: 1fr; }
-      .kpis { grid-template-columns: repeat(2, minmax(150px, 1fr)); }
+    @media (max-width: 860px) {
+      .shell { grid-template-columns: 1fr; }
+      aside {
+        position: static;
+        height: auto;
+        padding: 14px;
+      }
+      .nav { grid-template-columns: 1fr 1fr; }
+      .tip { margin-top: 0; }
+      main { min-height: 76vh; }
       .topbar { align-items: flex-start; flex-direction: column; }
     }
   </style>
 </head>
 <body>
-  <header>
-    <div class="topbar">
-      <h1>BM-TikTok Shop TH 项目成本利润测算器</h1>
-      <div class="actions">
-        <button class="primary" id="exportJson">导出参数</button>
-        <label class="file-label" for="importJson">导入参数</label>
-        <input id="importJson" type="file" accept="application/json">
-        <button id="exportCsv">导出明细CSV</button>
-        <button class="danger" id="resetData">恢复空白模板</button>
-        <div class="auth-box">
-          <input id="authEmail" type="email" placeholder="邮箱">
-          <input id="authPassword" type="password" placeholder="密码">
-          <button id="loginBtn">登录</button>
-          <button id="signupBtn">注册</button>
-          <button id="cloudSaveBtn">云端保存</button>
-          <button id="logoutBtn" style="display:none">退出</button>
-          <span class="auth-status" id="authStatus">游客模式</span>
+  <div class="shell">
+    <aside>
+      <div class="brand">
+        <h1>BM 运营工具中心</h1>
+        <p>成本测算、商品卡分析统一入口。两个工具使用同一个 BM 账号体系。</p>
+      </div>
+      <div class="nav">
+        <button class="active" data-tool="profit">
+          成本利润计算器
+          <span>项目成本、ROI、投流空间</span>
+        </button>
+        <button data-tool="product-card">
+          商品卡分析工具
+          <span>Traffic/List、PID、诊断归因</span>
+        </button>
+      </div>
+      <div class="tip">同一个浏览器里登录一次后，切换工具会复用 BM 账号会话。若某个工具未立即识别登录状态，刷新右侧页面即可。</div>
+    </aside>
+    <main>
+      <div class="topbar">
+        <div class="title">
+          <b id="toolTitle">成本利润计算器</b>
+          <span id="toolDesc">项目成本、ROI、投流空间测算</span>
+        </div>
+        <div class="actions">
+          <a id="openNew" href="BM-profit-calculator/" target="_blank" rel="noreferrer">新窗口打开</a>
+          <a href="BM-product-card-bi/" target="_blank" rel="noreferrer">商品卡直达</a>
         </div>
       </div>
-    </div>
-  </header>
-  <main>
-    <div class="tabs">
-      <button class="tab active" data-tab="dashboard">项目总览</button>
-      <button class="tab" data-tab="inputs">项目输入</button>
-      <button class="tab" data-tab="sku">SKU 数据</button>
-      <button class="tab" data-tab="rules">券规则</button>
-      <button class="tab" data-tab="details">场景明细</button>
-      <button class="tab" data-tab="cartDeals">凑单订单</button>
-      <button class="tab" data-tab="unitSpace">单品投流空间</button>
-      <button class="tab" data-tab="optimize">优化模拟</button>
-    </div>
-
-    <section id="dashboard" class="view active">
-      <div class="kpis" id="kpis"></div>
-      <div class="grid two">
-        <div class="panel">
-          <h2>品牌方项目利润总览</h2>
-          <div class="panel-body">
-            <table id="summaryTable"></table>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>成本结构</h2>
-          <div class="panel-body">
-            <table id="costTable"></table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="inputs" class="view">
-      <div class="grid two">
-        <div class="panel">
-          <h2>项目基础输入</h2>
-          <div class="panel-body">
-            <table id="projectInputs"></table>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>场景 GMV 占比</h2>
-          <div class="panel-body">
-            <table id="scenarioInputs"></table>
-            <p class="note">日常/小促/大促占比会分摊到每个 SKU 的场景目标；AOV 由实际到手价和订单数自动反推，不需要手填。</p>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="sku" class="view">
-      <div class="panel">
-        <h2>SKU 基础数据</h2>
-        <div class="panel-body">
-          <div class="actions" style="margin-bottom:8px">
-            <button class="small" id="addSku">新增 SKU</button>
-          </div>
-          <div class="scroll">
-            <table class="sticky" id="skuTable"></table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="rules" class="view">
-      <div class="grid two">
-        <div class="panel">
-          <h2>店铺券规则</h2>
-          <div class="panel-body">
-            <p class="note">店铺端口默认只生效最大力度：新人券和场景券会自动取最大值。</p>
-            <div class="scroll">
-              <table class="sticky" id="storeCouponTable"></table>
-            </div>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>共资券规则库</h2>
-          <div class="panel-body">
-            <div class="actions" style="margin-bottom:8px">
-              <button class="small" id="addCofund">新增共资券</button>
-            </div>
-            <p class="note">默认仅大促匹配共资券。以划线价匹配门槛，选择门槛内优惠金额最大的券，平台补贴进入结算收入。</p>
-            <div class="scroll">
-              <table class="sticky" id="cofundTable"></table>
-            </div>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="details" class="view">
-      <div class="panel">
-        <h2>SKU 场景测算明细</h2>
-        <div class="panel-body">
-          <div class="scroll">
-            <table class="sticky" id="detailTable"></table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="unitSpace" class="view">
-      <div class="panel">
-        <h2>单品促销机制投流空间</h2>
-        <div class="panel-body">
-          <p class="note">计算口径：成本费率 =（到仓成本/件 + 平台基础设施费/单 + 赠品成本/单） ÷ 收入计算基准；收入计算基准 = 用户实付价 + 平台共资补贴；投流空间 = 1 - 成本费率 - 平台总费率 - 达人佣金率 - 货损率；单品保本ROI = 1 ÷ 投流空间。</p>
-          <div class="actions" id="unitSpaceControls" style="margin-bottom:8px"></div>
-          <div class="scroll">
-            <table class="sticky" id="unitSpaceTable"></table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="cartDeals" class="view">
-      <div class="panel">
-        <h2>凑单订单场景测算</h2>
-        <div class="panel-body">
-          <p class="note">订单包口径：先计算订单内商品券合计，再和店铺满减券比较，店铺端口只取优惠最大的一个；之后再匹配共资券。收入计算基准 = 用户实付 + 平台共资补贴，赠品、平台费、达人佣金、物流和货损都会进入订单利润。</p>
-          <div class="actions" style="margin-bottom:8px">
-            <button class="small" id="addCartDeal">新增凑单场景</button>
-          </div>
-          <div class="scroll">
-            <table class="sticky" id="cartDealInputTable"></table>
-          </div>
-          <div class="scroll" style="margin-top:12px">
-            <table class="sticky" id="cartDealResultTable"></table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="optimize" class="view">
-      <div class="grid two">
-        <div class="panel">
-          <h2>运营可控优化建议</h2>
-          <div class="panel-body">
-            <table id="optimizationTable"></table>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>手动调控模拟</h2>
-          <div class="panel-body">
-            <table id="manualSimTable"></table>
-            <p class="note">成本类填调整后的金额；收入/AOV/ROAS类填调整后的目标值。多个项目一起填时，下方“组合调控结果”会合并计算；若直接填写“目标结算收入”，则以该收入为准，不再叠加AOV/ROAS。</p>
-          </div>
-        </div>
-      </div>
-    </section>
-  </main>
-
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+      <iframe id="toolFrame" src="BM-profit-calculator/" title="BM Tool"></iframe>
+    </main>
+  </div>
   <script>
-    const scenarios = ["日常", "小促", "大促"];
-    const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
-    const money2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const storageKey = "profitCalculatorStateBMBlankV2";
-    const supabaseUrl = "https://dwneujmcyuwzmflqpqxf.supabase.co";
-    const supabaseAnonKey = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
-    const sbClient = window.supabase?.createClient(supabaseUrl, supabaseAnonKey);
-    let currentUser = null;
-    let cloudTimer = null;
-    let syncingCloud = false;
-
-    const defaultState = {
-      project: {
-        name: "",
-        period: "",
-        gmv: 0,
-        targetROI: 0,
-        returnRate: 0,
-        nonResaleReturnRate: 0,
-        returnProcessCost: 0,
-        adSpend: 0,
-        creatorBuying: 0,
-        sampleCost: 0,
-        otherCost: 0,
-        agencyRate: 0,
-        logisticsRate: 0,
-        lossRate: 0,
-        platformInfraPerOrder: 1.07,
-        platformCommissionRate: 0.1177,
-        transactionRate: 0.0321,
-        commerceGrowthRate: 0.0803,
-        bcdFlashRate: 0.0321,
-        resourcePackRate: 0.01,
-        sfpRate: 0.005,
-        voucherXtraRate: 0.005,
-        creatorCommissionRate: 0
+    const tools = {
+      profit: {
+        title: "成本利润计算器",
+        desc: "项目成本、ROI、投流空间测算",
+        url: "BM-profit-calculator/"
       },
-      scenarioShares: { "日常": 0, "小促": 0, "大促": 0 },
-      unitSpace: { sceneFilter: "全部", adjustments: {} },
-      skus: [],
-      storeCoupon: { newUser: 0 },
-      cartDeals: [],
-      cofundRules: [
-        { name: "12% off", scene: "大促", discountRate: 0.12, threshold: 199, cap: 200, platformShare: 0.40, merchantShare: 0.60 },
-        { name: "15% off cap250", scene: "大促", discountRate: 0.15, threshold: 999, cap: 250, platformShare: 0.50, merchantShare: 0.50 },
-        { name: "15% off cap600", scene: "大促", discountRate: 0.15, threshold: 300, cap: 600, platformShare: 0.40, merchantShare: 0.60 },
-        { name: "20% off", scene: "大促", discountRate: 0.20, threshold: 390, cap: 350, platformShare: 0.40, merchantShare: 0.60 },
-        { name: "25% off cap750", scene: "大促", discountRate: 0.25, threshold: 399, cap: 750, platformShare: 0.40, merchantShare: 0.60 },
-        { name: "35% off", scene: "大促", discountRate: 0.35, threshold: 100, cap: 1000, platformShare: 0.60, merchantShare: 0.40 }
-      ],
-      manual: { adSpend: "", creatorBuying: "", fixedOther: "", settlementIncome: "", aov: "", roas: "" }
+      "product-card": {
+        title: "商品卡分析工具",
+        desc: "Traffic/List、PID、每日诊断和变化归因",
+        url: "BM-product-card-bi/"
+      }
     };
+    const buttons = [...document.querySelectorAll("[data-tool]")];
+    const frame = document.getElementById("toolFrame");
+    const toolTitle = document.getElementById("toolTitle");
+    const toolDesc = document.getElementById("toolDesc");
+    const openNew = document.getElementById("openNew");
 
-    let state = loadState();
-
-    function loadState() {
-      const raw = localStorage.getItem(storageKey);
-      if (!raw) return structuredClone(defaultState);
-      try { return { ...structuredClone(defaultState), ...JSON.parse(raw) }; }
-      catch { return structuredClone(defaultState); }
+    function selectTool(key, push = true) {
+      const tool = tools[key] || tools.profit;
+      buttons.forEach(btn => btn.classList.toggle("active", btn.dataset.tool === key));
+      frame.src = tool.url;
+      toolTitle.textContent = tool.title;
+      toolDesc.textContent = tool.desc;
+      openNew.href = tool.url;
+      if (push) history.replaceState(null, "", "#" + key);
     }
-    function saveState() {
-      localStorage.setItem(storageKey, JSON.stringify(state));
-      scheduleCloudSave();
-    }
-    function setAuthStatus(text) {
-      const el = document.getElementById("authStatus");
-      if (el) el.textContent = text;
-    }
-    function sanitizeCloudData(data) {
-      return { ...structuredClone(defaultState), ...(data || {}) };
-    }
-    function scheduleCloudSave() {
-      if (!currentUser || syncingCloud) return;
-      clearTimeout(cloudTimer);
-      cloudTimer = setTimeout(() => saveCloudData(false), 800);
-    }
-    async function saveCloudData(showMessage = true) {
-      if (!sbClient) return setAuthStatus("云端未启用");
-      if (!currentUser) return setAuthStatus("请先登录");
-      const { error } = await sbClient
-        .from("calculator_profiles")
-        .upsert({ user_id: currentUser.id, data: state }, { onConflict: "user_id" });
-      if (error) {
-        setAuthStatus("保存失败");
-        if (showMessage) alert(error.message);
-        return;
-      }
-      setAuthStatus(showMessage ? "已保存到云端" : "已自动保存");
-    }
-    async function loadCloudData(user) {
-      syncingCloud = true;
-      setAuthStatus("读取云端...");
-      const { data, error } = await sbClient
-        .from("calculator_profiles")
-        .select("data")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      syncingCloud = false;
-      if (error) {
-        setAuthStatus("读取失败");
-        alert(error.message);
-        return;
-      }
-      if (data?.data) {
-        state = sanitizeCloudData(data.data);
-        localStorage.setItem(storageKey, JSON.stringify(state));
-        setAuthStatus("已加载云端数据");
-      } else {
-        state = structuredClone(defaultState);
-        localStorage.setItem(storageKey, JSON.stringify(state));
-        setAuthStatus("新账号空白模板");
-      }
-      render();
-    }
-    function updateAuthUi() {
-      document.getElementById("logoutBtn").style.display = currentUser ? "" : "none";
-      document.getElementById("cloudSaveBtn").disabled = !currentUser;
-      if (currentUser) {
-        document.getElementById("authEmail").value = currentUser.email || "";
-        setAuthStatus(currentUser.email || "已登录");
-      } else {
-        setAuthStatus("游客模式");
-      }
-    }
-    async function initAuth() {
-      if (!sbClient) {
-        setAuthStatus("云端未启用");
-        return;
-      }
-      const { data } = await sbClient.auth.getSession();
-      currentUser = data.session?.user || null;
-      updateAuthUi();
-      if (currentUser) await loadCloudData(currentUser);
-      sbClient.auth.onAuthStateChange(async (_event, session) => {
-        currentUser = session?.user || null;
-        updateAuthUi();
-        if (currentUser) await loadCloudData(currentUser);
-      });
-    }
-    function num(v, fallback = 0) {
-      const n = Number(v);
-      return Number.isFinite(n) ? n : fallback;
-    }
-    function pct(v) { return (num(v) * 100).toFixed(2) + "%"; }
-    function money(v) { return money2.format(num(v)); }
-    function ratio(v) { return Number.isFinite(num(v)) ? num(v).toFixed(2) : "不可达"; }
-    function input(value, path, type = "number", step = "0.01") {
-      const escaped = String(value ?? "").replaceAll('"', "&quot;");
-      if (type === "checkbox") {
-        return `<input type="checkbox" data-path="${path}" ${value ? "checked" : ""}>`;
-      }
-      return `<input type="${type}" step="${step}" data-path="${path}" value="${escaped}">`;
-    }
-    function select(value, path, options) {
-      return `<select data-path="${path}">${options.map(o => `<option value="${o}" ${o === value ? "selected" : ""}>${o}</option>`).join("")}</select>`;
-    }
-    function setPath(path, value, isCheckbox = false) {
-      const parts = path.split(".");
-      let obj = state;
-      for (let i = 0; i < parts.length - 1; i++) {
-        const key = parts[i];
-        if (!obj[key] || typeof obj[key] !== "object") obj[key] = {};
-        obj = obj[key];
-      }
-      obj[parts.at(-1)] = isCheckbox ? value : (value === "" ? "" : (isNaN(Number(value)) ? value : Number(value)));
-      saveState();
-      render();
-    }
-    function normalizeShares() {
-      const enabled = state.skus.filter(s => s.enabled);
-      const total = enabled.reduce((a, s) => a + num(s.salesShare), 0) || 1;
-      return new Map(enabled.map(s => [s.sku, num(s.salesShare) / total]));
-    }
-    function platformRate() {
-      const p = state.project;
-      return num(p.platformCommissionRate) + num(p.transactionRate) + num(p.commerceGrowthRate) + num(p.bcdFlashRate) + num(p.resourcePackRate) + num(p.sfpRate) + num(p.voucherXtraRate);
-    }
-    function effectiveStoreCoupon(sku, scene) {
-      return Math.max(num(state.storeCoupon.newUser), num(sku.coupons?.[scene]));
-    }
-    function matchCofund(sku, scene) {
-      if (!sku.cofund || scene !== "大促") return null;
-      let best = null;
-      for (const rule of state.cofundRules) {
-        if (rule.scene !== "大促") continue;
-        if (num(sku.listPrice) < num(rule.threshold)) continue;
-        const userDiscount = Math.min(num(sku.listPrice) * num(rule.discountRate), num(rule.cap));
-        if (!best || userDiscount > best.userDiscount) {
-          best = { ...rule, userDiscount };
-        }
-      }
-      return best;
-    }
-    function matchCofundByAmount(amount, scene, enabled = true) {
-      if (!enabled || scene !== "大促") return null;
-      let best = null;
-      for (const rule of state.cofundRules) {
-        if (rule.scene !== "大促") continue;
-        if (num(amount) < num(rule.threshold)) continue;
-        const userDiscount = Math.min(num(amount) * num(rule.discountRate), num(rule.cap));
-        if (!best || userDiscount > best.userDiscount) best = { ...rule, userDiscount };
-      }
-      return best;
-    }
-    function parseSkuMix(text) {
-      return String(text || "").split(/[,，;；\n]+/).map(part => {
-        const [rawSku, rawQty] = part.split(/[:：xX*＊]/).map(v => String(v || "").trim());
-        const sku = state.skus.find(s => s.sku === rawSku);
-        const qty = num(rawQty, 1);
-        return sku && qty > 0 ? { sku, qty } : null;
-      }).filter(Boolean);
-    }
-    function unitAdjustmentKey(sku, scene) {
-      return `${sku.sku}__${scene}`;
-    }
-    function unitAdjustment(sku, scene) {
-      if (!state.unitSpace) state.unitSpace = { sceneFilter: "全部", adjustments: {} };
-      if (!state.unitSpace.adjustments) state.unitSpace.adjustments = {};
-      const key = unitAdjustmentKey(sku, scene);
-      if (!state.unitSpace.adjustments[key]) state.unitSpace.adjustments[key] = { mechanism: "", giftCost: "" };
-      return state.unitSpace.adjustments[key];
-    }
-    function computeDetails() {
-      const shares = normalizeShares();
-      const rows = [];
-      const p = state.project;
-      for (const sku of state.skus.filter(s => s.enabled)) {
-        for (const scene of scenarios) {
-          const skuShare = shares.get(sku.sku) || 0;
-          const sceneShare = num(state.scenarioShares[scene]);
-          const sceneGMV = num(p.gmv) * skuShare * sceneShare;
-          const storeCoupon = effectiveStoreCoupon(sku, scene);
-          const afterStore = Math.max(0, num(sku.listPrice) - storeCoupon);
-          const cofund = matchCofund(sku, scene);
-          const userCofund = cofund ? cofund.userDiscount : 0;
-          const merchantCofund = userCofund * (cofund ? num(cofund.merchantShare) : 0);
-          const platformSubsidyPerUnit = userCofund * (cofund ? num(cofund.platformShare) : 0);
-          const userPay = Math.max(0, afterStore - userCofund);
-          const settlementPerUnit = Math.max(0, afterStore - merchantCofund);
-          const orderAov = userPay * num(sku.unitPerOrder);
-          const orders = orderAov > 0 ? sceneGMV / orderAov : 0;
-          const effectiveOrders = orders * (1 - num(p.returnRate));
-          const units = orders * num(sku.unitPerOrder);
-          const effectiveUnits = effectiveOrders * num(sku.unitPerOrder);
-          const settlementIncome = effectiveUnits * settlementPerUnit;
-          const userPaidEffectiveGMV = effectiveOrders * orderAov;
-          const platformSubsidy = effectiveUnits * platformSubsidyPerUnit;
-          const platformFee = settlementIncome * platformRate() + effectiveOrders * num(p.platformInfraPerOrder);
-          const creatorCommission = settlementIncome * (num(sku.creatorCommissionRate, num(p.creatorCommissionRate)) || num(p.creatorCommissionRate));
-          const cogs = effectiveUnits * num(sku.cost);
-          const logistics = settlementIncome * num(p.logisticsRate);
-          const loss = settlementIncome * num(p.lossRate);
-          const adAlloc = num(p.adSpend) * skuShare * sceneShare;
-          const creatorBuyingAlloc = num(p.creatorBuying) * skuShare * sceneShare;
-          const sceneCost = platformFee + creatorCommission + cogs + logistics + loss + adAlloc + creatorBuyingAlloc;
-          const sceneProfit = settlementIncome - sceneCost;
-          rows.push({
-            sku: sku.sku, name: sku.name, scene, skuShare, sceneShare, sceneGMV,
-            listPrice: num(sku.listPrice), storeCoupon, afterStore,
-            cofundName: cofund ? cofund.name : (scene === "大促" && sku.cofund ? "无可用券" : "不匹配"),
-            userCofund, merchantCofund, platformSubsidyPerUnit, userPay, settlementPerUnit,
-            orderAov, orders, effectiveOrders, units, effectiveUnits, settlementIncome,
-            userPaidEffectiveGMV, platformSubsidy, platformFee, creatorCommission, cogs, logistics,
-            loss, adAlloc, creatorBuyingAlloc, sceneCost, sceneProfit
-          });
-        }
-      }
-      return rows;
-    }
-    function computeUnitSpaces() {
-      const p = state.project;
-      const feeRate = platformRate();
-      const sceneFilter = state.unitSpace?.sceneFilter || "全部";
-      const rows = [];
-      for (const sku of state.skus.filter(s => s.enabled)) {
-        for (const scene of scenarios) {
-          if (sceneFilter !== "全部" && scene !== sceneFilter) continue;
-          const adj = unitAdjustment(sku, scene);
-          const storeCoupon = effectiveStoreCoupon(sku, scene);
-          const afterStore = Math.max(0, num(sku.listPrice) - storeCoupon);
-          const cofund = matchCofund(sku, scene);
-          const userCofund = cofund ? cofund.userDiscount : 0;
-          const merchantCofund = userCofund * (cofund ? num(cofund.merchantShare) : 0);
-          const platformSubsidyPerUnit = userCofund * (cofund ? num(cofund.platformShare) : 0);
-          const userPay = Math.max(0, afterStore - userCofund);
-          const settlementPerUnit = Math.max(0, afterStore - merchantCofund);
-          const creatorRate = num(sku.creatorCommissionRate, num(p.creatorCommissionRate)) || num(p.creatorCommissionRate);
-          const giftCost = adj.giftCost === "" ? 0 : num(adj.giftCost);
-          const baseCost = num(sku.cost) + num(p.platformInfraPerOrder) + giftCost;
-          const costRate = settlementPerUnit > 0 ? baseCost / settlementPerUnit : 0;
-          const adSpace = settlementPerUnit > 0 ? 1 - costRate - feeRate - creatorRate - num(p.lossRate) : 0;
-          rows.push({
-            sku: sku.sku,
-            name: sku.name,
-            scene,
-            adjustmentKey: unitAdjustmentKey(sku, scene),
-            mechanism: adj.mechanism || "",
-            listPrice: num(sku.listPrice),
-            storeCoupon,
-            afterStore,
-            cofundName: cofund ? cofund.name : (scene === "大促" && sku.cofund ? "无可用券" : "不匹配"),
-            userCofund,
-            merchantCofund,
-            platformSubsidyPerUnit,
-            userPay,
-            settlementPerUnit,
-            cost: num(sku.cost),
-            infra: num(p.platformInfraPerOrder),
-            giftCost,
-            giftCostInput: adj.giftCost ?? "",
-            baseCost,
-            costRate,
-            platformRate: feeRate,
-            creatorRate,
-            lossRate: num(p.lossRate),
-            adSpace,
-            breakevenRoi: adSpace > 0 ? 1 / adSpace : null
-          });
-        }
-      }
-      return rows;
-    }
-    function computeCartDeals() {
-      const p = state.project;
-      const rows = [];
-      for (const deal of (state.cartDeals || []).filter(d => d.enabled)) {
-        const items = parseSkuMix(deal.skuMix);
-        const scene = deal.scene || "大促";
-        const listTotal = items.reduce((sum, it) => sum + num(it.sku.listPrice) * it.qty, 0);
-        const productCouponTotal = items.reduce((sum, it) => sum + effectiveStoreCoupon(it.sku, scene) * it.qty, 0);
-        const fullReduction = listTotal >= num(deal.threshold) ? num(deal.discount) : 0;
-        const activeStoreDiscount = Math.max(productCouponTotal, fullReduction);
-        const activeStoreType = activeStoreDiscount === 0 ? "无店铺券" : (fullReduction > productCouponTotal ? "满减券" : "商品券");
-        const afterStore = Math.max(0, listTotal - activeStoreDiscount);
-        const cofund = matchCofundByAmount(listTotal, scene, deal.cofund);
-        const userCofund = cofund ? cofund.userDiscount : 0;
-        const merchantCofund = userCofund * (cofund ? num(cofund.merchantShare) : 0);
-        const platformSubsidy = userCofund * (cofund ? num(cofund.platformShare) : 0);
-        const userPay = Math.max(0, afterStore - userCofund);
-        const settlement = Math.max(0, afterStore - merchantCofund);
-        const cogs = items.reduce((sum, it) => sum + num(it.sku.cost) * it.qty, 0);
-        const units = items.reduce((sum, it) => sum + it.qty, 0);
-        const infra = num(p.platformInfraPerOrder);
-        const giftCost = num(deal.giftCost);
-        const platformFee = settlement * platformRate() + infra;
-        const creatorCommission = settlement * num(p.creatorCommissionRate);
-        const logistics = settlement * num(p.logisticsRate);
-        const loss = settlement * num(p.lossRate);
-        const preAdCost = cogs + giftCost + platformFee + creatorCommission + logistics + loss;
-        const availableAd = settlement - preAdCost;
-        const adSpace = settlement > 0 ? availableAd / settlement : 0;
-        const breakevenRoi = availableAd > 0 ? settlement / availableAd : null;
-        const orderGmv = num(p.gmv) * num(deal.orderShare);
-        const orderCount = userPay > 0 ? orderGmv / userPay : 0;
-        const totalSettlement = settlement * orderCount;
-        const totalProfitBeforeAd = availableAd * orderCount;
-        rows.push({
-          deal,
-          scene,
-          items,
-          units,
-          listTotal,
-          productCouponTotal,
-          fullReduction,
-          activeStoreDiscount,
-          activeStoreType,
-          afterStore,
-          cofundName: cofund ? cofund.name : (scene === "大促" && deal.cofund ? "无可用券" : "不匹配"),
-          userCofund,
-          merchantCofund,
-          platformSubsidy,
-          userPay,
-          settlement,
-          cogs,
-          infra,
-          giftCost,
-          platformFee,
-          creatorCommission,
-          logistics,
-          loss,
-          preAdCost,
-          availableAd,
-          adSpace,
-          breakevenRoi,
-          orderGmv,
-          orderCount,
-          totalSettlement,
-          totalProfitBeforeAd
-        });
-      }
-      return rows;
-    }
-    function computeSummary() {
-      const rows = computeDetails();
-      const p = state.project;
-      const sum = key => rows.reduce((a, r) => a + num(r[key]), 0);
-      const settlementIncome = sum("settlementIncome");
-      const userPaidEffectiveGMV = sum("userPaidEffectiveGMV");
-      const platformSubsidy = sum("platformSubsidy");
-      const effectiveOrders = sum("effectiveOrders");
-      const units = sum("effectiveUnits");
-      const platformFee = sum("platformFee");
-      const creatorCommission = sum("creatorCommission");
-      const cogs = sum("cogs");
-      const logistics = settlementIncome * num(p.logisticsRate);
-      const loss = settlementIncome * num(p.lossRate);
-      const agency = num(p.gmv) * num(p.agencyRate);
-      const adSpend = num(p.adSpend);
-      const creatorBuying = num(p.creatorBuying);
-      const sampleCost = num(p.sampleCost);
-      const otherCost = num(p.otherCost);
-      const totalCost = adSpend + platformFee + creatorCommission + cogs + logistics + loss + creatorBuying + agency + sampleCost + otherCost;
-      const profit = settlementIncome - totalCost;
-      const variableCost = platformFee + creatorCommission + cogs + logistics + loss + agency;
-      const fixedCost = adSpend + creatorBuying + sampleCost + otherCost;
-      const contribution = settlementIncome - variableCost;
-      const contributionRate = settlementIncome ? contribution / settlementIncome : 0;
-      const breakevenAdBudget = settlementIncome - (totalCost - adSpend);
-      const roasBreakevenBudget = breakevenAdBudget > 0 ? num(p.gmv) / breakevenAdBudget : null;
-      const fixedAdBreakevenGMV = contribution > 0 ? num(p.gmv) * fixedCost / contribution : null;
-      const fixedAdBreakevenRoas = fixedAdBreakevenGMV && adSpend > 0 ? fixedAdBreakevenGMV / adSpend : null;
-      const targetAllowedAd = settlementIncome / num(p.targetROI) - (totalCost - adSpend);
-      const targetRequiredRoas = targetAllowedAd > 0 ? num(p.gmv) / targetAllowedAd : null;
-      return {
-        rows, gmv: num(p.gmv), effectiveUserPaidGMV: userPaidEffectiveGMV, platformSubsidy, settlementIncome,
-        effectiveOrders, units, aov: effectiveOrders ? userPaidEffectiveGMV / effectiveOrders : 0,
-        adSpend, platformFee, creatorCommission, cogs, logistics, loss, creatorBuying, agency, sampleCost, otherCost,
-        totalCost, profit, profitRate: settlementIncome ? profit / settlementIncome : 0,
-        backendRoas: adSpend ? num(p.gmv) / adSpend : 0,
-        effectiveRoas: adSpend ? userPaidEffectiveGMV / adSpend : 0,
-        totalRoi: totalCost ? settlementIncome / totalCost : 0,
-        marketingRoi: (adSpend + creatorBuying + sampleCost) ? settlementIncome / (adSpend + creatorBuying + sampleCost) : 0,
-        nonAdCost: totalCost - adSpend, zeroAdProfit: settlementIncome - (totalCost - adSpend),
-        breakevenAdBudget, roasBreakevenBudget, targetAllowedAd, targetRequiredRoas,
-        variableCost, fixedCost, contribution, contributionRate, fixedAdBreakevenGMV, fixedAdBreakevenRoas,
-        targetCost: settlementIncome / num(p.targetROI), gapToTarget: Math.max(totalCost - settlementIncome / num(p.targetROI), 0),
-        status: profit > 0 ? "盈利" : (profit === 0 ? "持平" : "亏损")
-      };
-    }
-    function manualScenario(summary) {
-      const m = state.manual;
-      const aovFactor = m.aov !== "" ? num(m.aov) / (summary.aov || 1) : 1;
-      const roasFactor = m.roas !== "" ? num(m.roas) / (summary.backendRoas || 1) : 1;
-      const income = m.settlementIncome !== ""
-        ? num(m.settlementIncome)
-        : summary.settlementIncome * aovFactor * roasFactor;
-      const variableScaled = income * (summary.variableCost / (summary.settlementIncome || 1));
-      const ad = m.adSpend !== "" ? num(m.adSpend) : summary.adSpend;
-      const creatorBuying = m.creatorBuying !== "" ? num(m.creatorBuying) : summary.creatorBuying;
-      const fixedOther = m.fixedOther !== "" ? num(m.fixedOther) : summary.sampleCost + summary.otherCost;
-      const totalCost = variableScaled + ad + creatorBuying + fixedOther;
-      const profit = income - totalCost;
-      return { income, totalCost, profit, profitDelta: profit - summary.profit, roi: totalCost ? income / totalCost : 0, status: profit > 0 ? "盈利" : profit === 0 ? "持平" : "亏损" };
-    }
-    function render() {
-      const summary = computeSummary();
-      renderKpis(summary);
-      renderSummary(summary);
-      renderCosts(summary);
-      renderInputs();
-      renderSku();
-      renderRules();
-      renderDetails(summary.rows);
-      renderCartDeals(computeCartDeals());
-      renderUnitSpace(computeUnitSpaces());
-      renderOptimization(summary);
-      bindInputs();
-    }
-    function renderKpis(s) {
-      const kpis = [
-        ["结算收入基准", money(s.settlementIncome), "用户实付 + 平台补贴"],
-        ["品牌方净利润", money(s.profit), pct(s.profitRate), s.profit >= 0 ? "good" : "bad"],
-        ["项目总ROI", ratio(s.totalRoi), `目标 ${ratio(state.project.targetROI)}`, s.totalRoi >= state.project.targetROI ? "good" : "mid"],
-        ["当前后台ROAS", ratio(s.backendRoas), `保本 ${s.fixedAdBreakevenRoas ? ratio(s.fixedAdBreakevenRoas) : "不可达"}`],
-        ["综合AOV", money(s.aov), `${money0.format(s.effectiveOrders)} 单`]
-      ];
-      document.getElementById("kpis").innerHTML = kpis.map(([l, v, sub, cls = ""]) =>
-        `<div class="kpi"><div class="label">${l}</div><div class="value ${cls}">${v}</div><div class="sub">${sub}</div></div>`).join("");
-    }
-    function renderSummary(s) {
-      const rows = [
-        ["项目目标GMV/用户实付GMV", s.gmv, "", "后台GMV/用户实付GMV"],
-        ["有效用户实付GMV", s.effectiveUserPaidGMV, s.effectiveUserPaidGMV / s.settlementIncome, "扣退货后的用户实付GMV"],
-        ["平台共资补贴", s.platformSubsidy, s.platformSubsidy / s.settlementIncome, "平台补贴进入收入基准"],
-        ["结算收入基准", s.settlementIncome, 1, "收入=用户实付+平台补贴"],
-        ["有效订单数", s.effectiveOrders, "", "SKU和场景汇总"],
-        ["综合AOV/订单实付", s.aov, "", "自动反推，不手填"],
-        ["品牌方总成本", s.totalCost, s.totalCost / s.settlementIncome, "全部成本合计"],
-        ["品牌方净利润", s.profit, s.profitRate, "结算收入 - 总成本"],
-        ["当前后台广告ROAS", s.backendRoas, "", "后台GMV / 广告费"],
-        ["当前有效广告ROAS", s.effectiveRoas, "", "有效用户实付GMV / 广告费"],
-        ["项目总ROI", s.totalRoi, "", "结算收入 / 总成本"],
-        ["项目营销ROI", s.marketingRoi, "", "结算收入 /（广告+达人采买+样品）"],
-        ["固定广告费口径-保本后台ROAS", s.fixedAdBreakevenRoas, "", "广告费不变，提高ROAS带来增长"],
-        ["目标ROI所需后台ROAS", s.targetRequiredRoas, "", "GMV固定预算口径"],
-        ["安全状态", s.status, "", "项目整体状态"]
-      ];
-      document.getElementById("summaryTable").innerHTML = `<tr><th>项目</th><th class="num">金额/指标</th><th class="num">占收入</th><th>说明</th></tr>` +
-        rows.map(r => `<tr><td>${r[0]}</td><td class="num ${r[0].includes("净利润") ? (num(r[1]) >= 0 ? "good" : "bad") : ""}">${formatMixed(r[1])}</td><td class="num">${r[2] === "" ? "" : pct(r[2])}</td><td>${r[3]}</td></tr>`).join("");
-    }
-    function renderCosts(s) {
-      const costs = [
-        ["广告投流费用", s.adSpend],
-        ["平台扣费", s.platformFee],
-        ["达人佣金", s.creatorCommission],
-        ["货品成本", s.cogs],
-        ["物流成本", s.logistics],
-        ["货损成本", s.loss],
-        ["达人采买费用", s.creatorBuying],
-        ["代运营服务费", s.agency],
-        ["样品成本", s.sampleCost],
-        ["其他费用", s.otherCost]
-      ];
-      const max = Math.max(...costs.map(r => r[1]), 1);
-      document.getElementById("costTable").innerHTML = `<tr><th>成本项</th><th class="num">金额</th><th class="num">占结算收入</th><th>结构</th></tr>` +
-        costs.map(([name, value]) => `<tr><td>${name}</td><td class="num">${money(value)}</td><td class="num">${pct(value / s.settlementIncome)}</td><td><div class="bar"><span style="width:${Math.min(100, value / max * 100)}%"></span></div></td></tr>`).join("");
-    }
-    function renderInputs() {
-      const p = state.project;
-      const fields = [
-        ["项目名称", "project.name", "text"], ["测算周期", "project.period", "text"],
-        ["项目目标GMV/用户实付GMV", "project.gmv"], ["目标项目ROI", "project.targetROI"],
-        ["退货率", "project.returnRate"], ["后台广告ROAS对应广告费", "project.adSpend"],
-        ["达人采买费用（含内容）", "project.creatorBuying"], ["样品成本", "project.sampleCost"],
-        ["其他费用", "project.otherCost"], ["代运营服务费率", "project.agencyRate"],
-        ["物流费率", "project.logisticsRate"], ["货损率", "project.lossRate"],
-        ["平台基础设施费/单", "project.platformInfraPerOrder"], ["平台类目佣金率", "project.platformCommissionRate"],
-        ["交易手续费率", "project.transactionRate"], ["商业增长费率", "project.commerceGrowthRate"],
-        ["BCD/Flash佣金率", "project.bcdFlashRate"], ["活动资源包费率", "project.resourcePackRate"],
-        ["SFP/运费项目费率", "project.sfpRate"], ["Voucher Xtra费率", "project.voucherXtraRate"],
-        ["默认达人佣金率", "project.creatorCommissionRate"]
-      ];
-      document.getElementById("projectInputs").innerHTML = `<tr><th>字段</th><th>值</th></tr>` +
-        fields.map(([label, path, type = "number"]) => `<tr><td>${label}</td><td class="input-cell">${input(pathGet(path), path, type)}</td></tr>`).join("");
-      document.getElementById("scenarioInputs").innerHTML = `<tr><th>场景</th><th>GMV占比</th></tr>` +
-        scenarios.map(sc => `<tr><td>${sc}</td><td class="input-cell">${input(state.scenarioShares[sc], `scenarioShares.${sc}`)}</td></tr>`).join("");
-    }
-    function renderSku() {
-      document.getElementById("skuTable").innerHTML = `<tr>
-        <th style="width:95px">SKU</th><th style="width:160px">产品名</th><th class="center" style="width:70px">启用</th>
-        <th class="num">划线价</th><th class="num">到仓成本/件</th><th class="num">赠品成本/单</th><th class="num">件单比</th><th class="num">SKU销售占比</th>
-        <th class="center">参与共资</th><th class="num">日常券</th><th class="num">小促券</th><th class="num">大促券</th><th class="center">操作</th></tr>` +
-        state.skus.map((s, i) => `<tr>
-          <td class="input-cell">${input(s.sku, `skus.${i}.sku`, "text")}</td>
-          <td class="input-cell">${input(s.name, `skus.${i}.name`, "text")}</td>
-          <td class="center input-cell">${input(s.enabled, `skus.${i}.enabled`, "checkbox")}</td>
-          <td class="input-cell">${input(s.listPrice, `skus.${i}.listPrice`)}</td>
-          <td class="input-cell">${input(s.cost, `skus.${i}.cost`)}</td>
-          <td class="input-cell">${input(s.giftCost ?? 0, `skus.${i}.giftCost`)}</td>
-          <td class="input-cell">${input(s.unitPerOrder, `skus.${i}.unitPerOrder`)}</td>
-          <td class="input-cell">${input(s.salesShare, `skus.${i}.salesShare`)}</td>
-          <td class="center input-cell">${input(s.cofund, `skus.${i}.cofund`, "checkbox")}</td>
-          <td class="input-cell">${input(s.coupons["日常"], `skus.${i}.coupons.日常`)}</td>
-          <td class="input-cell">${input(s.coupons["小促"], `skus.${i}.coupons.小促`)}</td>
-          <td class="input-cell">${input(s.coupons["大促"], `skus.${i}.coupons.大促`)}</td>
-          <td class="center"><button class="small danger" data-remove-sku="${i}">删除</button></td>
-        </tr>`).join("");
-    }
-    function renderRules() {
-      document.getElementById("storeCouponTable").innerHTML = `<tr><th>项目</th><th>金额</th><th>说明</th></tr>
-        <tr><td>新人优惠券</td><td class="input-cell">${input(state.storeCoupon.newUser, "storeCoupon.newUser")}</td><td>与场景店铺券取最大值</td></tr>`;
-      document.getElementById("cofundTable").innerHTML = `<tr><th>券类型</th><th>场景</th><th class="num">折扣率</th><th class="num">门槛</th><th class="num">封顶</th><th class="num">平台承担</th><th class="num">商家承担</th><th>操作</th></tr>` +
-        state.cofundRules.map((r, i) => `<tr>
-          <td class="input-cell">${input(r.name, `cofundRules.${i}.name`, "text")}</td>
-          <td class="input-cell">${select(r.scene, `cofundRules.${i}.scene`, scenarios)}</td>
-          <td class="input-cell">${input(r.discountRate, `cofundRules.${i}.discountRate`)}</td>
-          <td class="input-cell">${input(r.threshold, `cofundRules.${i}.threshold`)}</td>
-          <td class="input-cell">${input(r.cap, `cofundRules.${i}.cap`)}</td>
-          <td class="input-cell">${input(r.platformShare, `cofundRules.${i}.platformShare`)}</td>
-          <td class="input-cell">${input(r.merchantShare, `cofundRules.${i}.merchantShare`)}</td>
-          <td class="center"><button class="small danger" data-remove-cofund="${i}">删除</button></td>
-        </tr>`).join("");
-    }
-    function renderDetails(rows) {
-      document.getElementById("detailTable").innerHTML = `<tr>
-        <th>SKU</th><th>产品名</th><th>场景</th><th class="num">SKU销售占比</th><th class="num">场景GMV占比</th><th class="num">场景目标GMV</th>
-        <th class="num">划线价</th><th class="num">店铺券</th><th class="num">店铺券后价</th><th>匹配共资券</th>
-        <th class="num">用户共资优惠/件</th><th class="num">商家承担/件</th><th class="num">平台补贴/件</th>
-        <th class="num">用户实付价/件</th><th class="num">结算收入/件</th><th class="num">AOV</th><th class="num">订单数</th>
-        <th class="num">有效订单数</th><th class="num">结算收入</th><th class="num">平台扣费</th><th class="num">达人佣金</th>
-        <th class="num">货品成本</th><th class="num">物流</th><th class="num">货损</th><th class="num">广告分摊</th><th class="num">达人采买分摊</th><th class="num">场景净利润</th></tr>` +
-        rows.map(r => `<tr>
-          <td>${r.sku}</td><td>${r.name}</td><td>${r.scene}</td><td class="num">${pct(r.skuShare)}</td><td class="num">${pct(r.sceneShare)}</td><td class="num">${money(r.sceneGMV)}</td>
-          <td class="num">${money(r.listPrice)}</td><td class="num">${money(r.storeCoupon)}</td><td class="num">${money(r.afterStore)}</td><td>${r.cofundName}</td>
-          <td class="num">${money(r.userCofund)}</td><td class="num">${money(r.merchantCofund)}</td><td class="num">${money(r.platformSubsidyPerUnit)}</td>
-          <td class="num">${money(r.userPay)}</td><td class="num">${money(r.settlementPerUnit)}</td><td class="num">${money(r.orderAov)}</td><td class="num">${money(r.orders)}</td>
-          <td class="num">${money(r.effectiveOrders)}</td><td class="num">${money(r.settlementIncome)}</td><td class="num">${money(r.platformFee)}</td><td class="num">${money(r.creatorCommission)}</td>
-          <td class="num">${money(r.cogs)}</td><td class="num">${money(r.logistics)}</td><td class="num">${money(r.loss)}</td><td class="num">${money(r.adAlloc)}</td><td class="num">${money(r.creatorBuyingAlloc)}</td><td class="num ${r.sceneProfit >= 0 ? "good" : "bad"}">${money(r.sceneProfit)}</td>
-        </tr>`).join("");
-    }
-    function renderCartDeals(rows) {
-      document.getElementById("cartDealInputTable").innerHTML = `<tr>
-        <th>订单场景</th><th class="center">启用</th><th>场景</th><th>SKU组合</th>
-        <th class="num">满减门槛</th><th class="num">满减金额</th><th class="num">赠品成本/单</th><th class="num">订单GMV占比</th><th class="center">参与共资</th><th>操作</th></tr>` +
-        (state.cartDeals || []).map((d, i) => `<tr>
-          <td class="input-cell">${input(d.name, `cartDeals.${i}.name`, "text")}</td>
-          <td class="center input-cell">${input(d.enabled, `cartDeals.${i}.enabled`, "checkbox")}</td>
-          <td class="input-cell">${select(d.scene, `cartDeals.${i}.scene`, scenarios)}</td>
-          <td class="input-cell">${input(d.skuMix, `cartDeals.${i}.skuMix`, "text")}</td>
-          <td class="input-cell">${input(d.threshold, `cartDeals.${i}.threshold`)}</td>
-          <td class="input-cell">${input(d.discount, `cartDeals.${i}.discount`)}</td>
-          <td class="input-cell">${input(d.giftCost, `cartDeals.${i}.giftCost`)}</td>
-          <td class="input-cell">${input(d.orderShare, `cartDeals.${i}.orderShare`)}</td>
-          <td class="center input-cell">${input(d.cofund, `cartDeals.${i}.cofund`, "checkbox")}</td>
-          <td class="center"><button class="small danger" data-remove-cart="${i}">删除</button></td>
-        </tr>`).join("");
-      document.getElementById("cartDealResultTable").innerHTML = `<tr>
-        <th>订单场景</th><th>场景</th><th>SKU组合</th><th class="num">划线合计</th>
-        <th class="num">商品券合计</th><th class="num">满减优惠</th><th>生效店铺券</th><th class="num">店铺券后金额</th>
-        <th>匹配共资券</th><th class="num">用户共资优惠</th><th class="num">商家承担</th><th class="num">平台补贴</th>
-        <th class="num">用户实付</th><th class="num">收入计算基准</th><th class="num">货品成本</th><th class="num">赠品成本</th>
-        <th class="num">平台扣费</th><th class="num">达人佣金</th><th class="num">物流</th><th class="num">货损</th>
-        <th class="num">可投流金额/单</th><th class="num">可投流空间</th><th class="num">保本ROI</th>
-        <th class="num">预估订单数</th><th class="num">场景收入</th><th class="num">场景投前利润</th></tr>` +
-        rows.map(r => {
-          const skuMix = r.items.map(it => `${it.sku.sku}×${it.qty}`).join(" + ");
-          const cls = r.availableAd > 0 ? "good" : "bad";
-          return `<tr>
-            <td>${r.deal.name}</td><td>${r.scene}</td><td>${skuMix}</td><td class="num">${money(r.listTotal)}</td>
-            <td class="num">${money(r.productCouponTotal)}</td><td class="num">${money(r.fullReduction)}</td><td>${r.activeStoreType}</td><td class="num">${money(r.afterStore)}</td>
-            <td>${r.cofundName}</td><td class="num">${money(r.userCofund)}</td><td class="num">${money(r.merchantCofund)}</td><td class="num">${money(r.platformSubsidy)}</td>
-            <td class="num">${money(r.userPay)}</td><td class="num">${money(r.settlement)}</td><td class="num">${money(r.cogs)}</td><td class="num">${money(r.giftCost)}</td>
-            <td class="num">${money(r.platformFee)}</td><td class="num">${money(r.creatorCommission)}</td><td class="num">${money(r.logistics)}</td><td class="num">${money(r.loss)}</td>
-            <td class="num ${cls}">${money(r.availableAd)}</td><td class="num ${cls}">${pct(r.adSpace)}</td><td class="num">${r.breakevenRoi ? ratio(r.breakevenRoi) : "不可投"}</td>
-            <td class="num">${money(r.orderCount)}</td><td class="num">${money(r.totalSettlement)}</td><td class="num ${cls}">${money(r.totalProfitBeforeAd)}</td>
-          </tr>`;
-        }).join("");
-    }
-    function renderUnitSpace(rows) {
-      document.getElementById("unitSpaceControls").innerHTML =
-        `<label>场景筛选 ${select(state.unitSpace?.sceneFilter || "全部", "unitSpace.sceneFilter", ["全部", "日常", "小促", "大促"])}</label>`;
-      document.getElementById("unitSpaceTable").innerHTML = `<tr>
-        <th>SKU</th><th>产品名</th><th>场景</th><th>活动机制</th>
-        <th class="num">划线价</th><th class="num">店铺券</th><th class="num">店铺券后价</th><th>匹配共资券</th>
-        <th class="num">用户共资优惠/件</th><th class="num">商家承担/件</th><th class="num">平台补贴/件</th><th class="num">券后到手价</th><th class="num">收入计算基准</th>
-        <th class="num">到仓成本/件</th><th class="num">平台基础设施费/单</th><th class="num">赠品成本/单</th><th class="num">成本合计/件</th>
-        <th class="num">成本费率</th><th class="num">平台总费率</th><th class="num">达人佣金率</th><th class="num">货损率</th>
-        <th class="num">可投流空间</th><th class="num">单品保本ROI</th><th>状态</th></tr>` +
-        rows.map(r => {
-          const status = r.adSpace > 0.2 ? "空间充足" : r.adSpace > 0 ? "空间偏窄" : "不可投";
-          const cls = r.adSpace > 0.2 ? "good" : r.adSpace > 0 ? "mid" : "bad";
-          const mechanismPath = `unitSpace.adjustments.${r.adjustmentKey}.mechanism`;
-          const giftPath = `unitSpace.adjustments.${r.adjustmentKey}.giftCost`;
-          return `<tr>
-            <td>${r.sku}</td><td>${r.name}</td><td>${r.scene}</td><td class="input-cell">${input(r.mechanism, mechanismPath, "text")}</td>
-            <td class="num">${money(r.listPrice)}</td><td class="num">${money(r.storeCoupon)}</td><td class="num">${money(r.afterStore)}</td><td>${r.cofundName}</td>
-            <td class="num">${money(r.userCofund)}</td><td class="num">${money(r.merchantCofund)}</td><td class="num">${money(r.platformSubsidyPerUnit)}</td><td class="num">${money(r.userPay)}</td><td class="num">${money(r.settlementPerUnit)}</td>
-            <td class="num">${money(r.cost)}</td><td class="num">${money(r.infra)}</td><td class="input-cell">${input(r.giftCostInput, giftPath)}</td><td class="num">${money(r.baseCost)}</td>
-            <td class="num">${pct(r.costRate)}</td><td class="num">${pct(r.platformRate)}</td><td class="num">${pct(r.creatorRate)}</td><td class="num">${pct(r.lossRate)}</td>
-            <td class="num ${cls}">${pct(r.adSpace)}</td><td class="num">${r.breakevenRoi ? ratio(r.breakevenRoi) : "不可投"}</td><td class="${cls}">${status}</td>
-          </tr>`;
-        }).join("");
-    }
-    function renderOptimization(s) {
-      const gap = s.gapToTarget;
-      const rows = [
-        ["广告投流费用", s.adSpend, "运营可控", "控制预算、提升ROAS、优化投放结构"],
-        ["达人采买费用", s.creatorBuying, "运营可控", "调整KOL/KOC/爆品包预算和投产效率"],
-        ["样品+其他费用", s.sampleCost + s.otherCost, "运营可控", "压缩固定费用"],
-        ["平台扣费", s.platformFee, "不可控", "平台费率不能调，只能通过价格/优惠/SKU结构间接改善"],
-        ["货品成本", s.cogs, "不可控", "物值/到仓成本默认不作为运营优化项"],
-        ["代运营服务费", s.agency, "不可控", "默认GMV 10%，不作为优化项"]
-      ];
-      document.getElementById("optimizationTable").innerHTML = `<tr><th>成本项</th><th class="num">当前金额</th><th class="num">占收入</th><th>属性</th><th>建议</th></tr>` +
-        rows.map(r => `<tr><td>${r[0]}</td><td class="num">${money(r[1])}</td><td class="num">${pct(r[1] / s.settlementIncome)}</td><td>${r[2]}</td><td>${r[3]}</td></tr>`).join("") +
-        `<tr class="warn-cell"><td>距离目标ROI成本缺口</td><td class="num">${money(gap)}</td><td class="num">${pct(gap / s.settlementIncome)}</td><td colspan="2">${gap > 0 ? "需要通过可控项组合优化，或提高收入/AOV/ROAS。" : "当前已达到目标ROI。"}</td></tr>`;
-      const sim = manualScenario(s);
-      const manualRows = [
-        ["降低广告投流费用", s.adSpend, "manual.adSpend", "填调整后的广告费"],
-        ["降低达人采买费用", s.creatorBuying, "manual.creatorBuying", "填调整后的达人采买"],
-        ["压缩样品+其他费用", s.sampleCost + s.otherCost, "manual.fixedOther", "填调整后的固定杂费"],
-        ["提升结算收入/少让利", s.settlementIncome, "manual.settlementIncome", "填目标结算收入"],
-        ["每单到手价需提升", s.aov, "manual.aov", "填目标综合AOV"],
-        ["固定广告费口径提升ROAS", s.backendRoas, "manual.roas", "填目标后台ROAS"]
-      ];
-      document.getElementById("manualSimTable").innerHTML = `<tr><th>动作</th><th class="num">当前值</th><th>手动输入调整后值</th><th class="num">变化/改善额</th><th>说明</th></tr>` +
-        manualRows.map(([name, current, path, note]) => {
-          const v = pathGet(path);
-          const delta = v === "" ? 0 : (name.includes("降低") || name.includes("压缩") ? current - num(v) : num(v) - current);
-          return `<tr><td>${name}</td><td class="num">${formatMixed(current)}</td><td class="input-cell">${input(v, path)}</td><td class="num">${formatMixed(delta)}</td><td>${note}</td></tr>`;
-        }).join("") +
-        `<tr class="calc-cell"><td>组合调控结果</td><td colspan="2">调后结算收入 ${money(sim.income)} / 调后总成本 ${money(sim.totalCost)}</td><td class="num ${sim.profit >= 0 ? "good" : "bad"}">${money(sim.profit)}</td><td>净利润变化 ${money(sim.profitDelta)}，ROI ${ratio(sim.roi)}，<span class="status ${sim.status === "亏损" ? "bad" : ""}">${sim.status}</span></td></tr>`;
-    }
-    function formatMixed(v) {
-      if (v === null || v === undefined) return "不可达";
-      if (typeof v === "string") return v;
-      if (!Number.isFinite(v)) return "不可达";
-      return Math.abs(v) < 20 && !Number.isInteger(v) ? v.toFixed(2) : money(v);
-    }
-    function pathGet(path) {
-      return path.split(".").reduce((obj, key) => obj?.[key], state);
-    }
-    function bindInputs() {
-      document.querySelectorAll("[data-path]").forEach(el => {
-        el.onchange = e => setPath(e.target.dataset.path, e.target.type === "checkbox" ? e.target.checked : e.target.value, e.target.type === "checkbox");
-      });
-      document.querySelectorAll("[data-remove-sku]").forEach(btn => btn.onclick = () => { state.skus.splice(Number(btn.dataset.removeSku), 1); saveState(); render(); });
-      document.querySelectorAll("[data-remove-cofund]").forEach(btn => btn.onclick = () => { state.cofundRules.splice(Number(btn.dataset.removeCofund), 1); saveState(); render(); });
-      document.querySelectorAll("[data-remove-cart]").forEach(btn => btn.onclick = () => { state.cartDeals.splice(Number(btn.dataset.removeCart), 1); saveState(); render(); });
-    }
-    document.querySelectorAll(".tab").forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll(".tab").forEach(b => b.classList.remove("active"));
-        document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-        btn.classList.add("active");
-        document.getElementById(btn.dataset.tab).classList.add("active");
-      };
-    });
-    document.getElementById("addSku").onclick = () => {
-      state.skus.push({ sku: "SKU" + String(state.skus.length + 1).padStart(3, "0"), name: "", enabled: true, listPrice: 0, cost: 0, giftCost: 0, unitPerOrder: 1, salesShare: 0, cofund: false, coupons: { "日常": 0, "小促": 0, "大促": 0 } });
-      saveState(); render();
-    };
-    document.getElementById("addCartDeal").onclick = () => {
-      if (!state.cartDeals) state.cartDeals = [];
-      state.cartDeals.push({ name: "", enabled: true, scene: "大促", skuMix: "", threshold: 0, discount: 0, giftCost: 0, orderShare: 0, cofund: false });
-      saveState(); render();
-    };
-    document.getElementById("addCofund").onclick = () => {
-      state.cofundRules.push({ name: "", scene: "大促", discountRate: 0, threshold: 0, cap: 0, platformShare: 0, merchantShare: 0 });
-      saveState(); render();
-    };
-    document.getElementById("resetData").onclick = () => {
-      if (confirm("确认恢复空白模板？当前输入会被覆盖。")) { state = structuredClone(defaultState); saveState(); render(); }
-    };
-    document.getElementById("exportJson").onclick = () => download("profit-calculator-params.json", JSON.stringify(state, null, 2), "application/json");
-    document.getElementById("importJson").onchange = async e => {
-      const file = e.target.files[0]; if (!file) return;
-      state = { ...structuredClone(defaultState), ...JSON.parse(await file.text()) };
-      saveState(); render();
-    };
-    document.getElementById("loginBtn").onclick = async () => {
-      if (!sbClient) return setAuthStatus("云端未启用");
-      const email = document.getElementById("authEmail").value.trim();
-      const password = document.getElementById("authPassword").value;
-      if (!email || !password) return setAuthStatus("请输入邮箱密码");
-      setAuthStatus("登录中...");
-      const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
-      if (error) {
-        setAuthStatus("登录失败");
-        alert(error.message);
-        return;
-      }
-      currentUser = data.user;
-      updateAuthUi();
-      await loadCloudData(currentUser);
-    };
-    document.getElementById("signupBtn").onclick = async () => {
-      if (!sbClient) return setAuthStatus("云端未启用");
-      const email = document.getElementById("authEmail").value.trim();
-      const password = document.getElementById("authPassword").value;
-      if (!email || !password) return setAuthStatus("请输入邮箱密码");
-      setAuthStatus("注册中...");
-      const { data, error } = await sbClient.auth.signUp({ email, password });
-      if (error) {
-        setAuthStatus("注册失败");
-        alert(error.message);
-        return;
-      }
-      currentUser = data.user;
-      updateAuthUi();
-      setAuthStatus(data.session ? "注册成功" : "请查收验证邮件");
-      if (data.session && currentUser) await loadCloudData(currentUser);
-    };
-    document.getElementById("logoutBtn").onclick = async () => {
-      if (!sbClient) return;
-      await sbClient.auth.signOut();
-      currentUser = null;
-      state = structuredClone(defaultState);
-      localStorage.removeItem(storageKey);
-      updateAuthUi();
-      render();
-    };
-    document.getElementById("cloudSaveBtn").onclick = () => saveCloudData(true);
-    document.getElementById("exportCsv").onclick = () => {
-      const rows = computeDetails();
-      const headers = ["SKU","产品名","场景","场景目标GMV","匹配共资券","用户实付价/件","结算收入/件","订单数","结算收入","平台扣费","达人佣金","货品成本","广告分摊","达人采买分摊","场景净利润"];
-      const csv = [headers, ...rows.map(r => [r.sku,r.name,r.scene,r.sceneGMV,r.cofundName,r.userPay,r.settlementPerUnit,r.orders,r.settlementIncome,r.platformFee,r.creatorCommission,r.cogs,r.adAlloc,r.creatorBuyingAlloc,r.sceneProfit])]
-        .map(row => row.map(v => `"${String(v).replaceAll('"','""')}"`).join(",")).join("\n");
-      download("sku-scenario-detail.csv", "\ufeff" + csv, "text/csv;charset=utf-8");
-    };
-    function download(name, text, type) {
-      const a = document.createElement("a");
-      a.href = URL.createObjectURL(new Blob([text], { type }));
-      a.download = name;
-      a.click();
-      URL.revokeObjectURL(a.href);
-    }
-    render();
-    initAuth();
+    buttons.forEach(btn => btn.addEventListener("click", () => selectTool(btn.dataset.tool)));
+    selectTool(location.hash.replace("#", "") || "profit", false);
   </script>
 </body>
 </html>
