@@ -621,6 +621,7 @@
     const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
     const money2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const storageKey = "profitCalculatorStateBMBlankV2";
+    const projectStorageKey = "profit_calculator_current_project_v1";
     const supabaseUrl = "https://dwneujmcyuwzmflqpqxf.supabase.co";
     const supabaseAnonKey = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
     const sbClient = window.supabase?.createClient(supabaseUrl, supabaseAnonKey);
@@ -672,13 +673,21 @@
 
     let state = loadState();
 
+    function currentProjectId() {
+      return localStorage.getItem(projectStorageKey) || localStorage.getItem("bm_current_project_v1") || "";
+    }
+    function scopedStorageKey() {
+      const id = currentProjectId();
+      return id ? `${storageKey}_${id}` : storageKey;
+    }
     function loadState() {
-      const raw = localStorage.getItem(storageKey);
+      const raw = localStorage.getItem(scopedStorageKey()) || localStorage.getItem(storageKey);
       if (!raw) return structuredClone(defaultState);
       try { return { ...structuredClone(defaultState), ...JSON.parse(raw) }; }
       catch { return structuredClone(defaultState); }
     }
     function saveState() {
+      localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
       localStorage.setItem(storageKey, JSON.stringify(state));
       scheduleCloudSave();
     }
@@ -690,16 +699,23 @@
       return { ...structuredClone(defaultState), ...(data || {}) };
     }
     function scheduleCloudSave() {
-      if (!currentUser || syncingCloud) return;
+      if (!currentUser || !currentProjectId() || syncingCloud) return;
       clearTimeout(cloudTimer);
       cloudTimer = setTimeout(() => saveCloudData(false), 800);
     }
     async function saveCloudData(showMessage = true) {
       if (!sbClient) return setAuthStatus("云端未启用");
       if (!currentUser) return setAuthStatus("请先登录");
+      const projectId = currentProjectId();
+      if (!projectId) return setAuthStatus("请先选择项目");
       const { error } = await sbClient
-        .from("calculator_profiles")
-        .upsert({ user_id: currentUser.id, data: state }, { onConflict: "user_id" });
+        .from("calculator_project_states")
+        .upsert({
+          project_id: projectId,
+          user_id: currentUser.id,
+          data: state,
+          updated_at: new Date().toISOString()
+        }, { onConflict: "project_id" });
       if (error) {
         setAuthStatus("保存失败");
         if (showMessage) alert(error.message);
@@ -708,12 +724,19 @@
       setAuthStatus(showMessage ? "已保存到云端" : "已自动保存");
     }
     async function loadCloudData(user) {
+      const projectId = currentProjectId();
+      if (!projectId) {
+        state = loadState();
+        render();
+        setAuthStatus("请选择项目");
+        return;
+      }
       syncingCloud = true;
       setAuthStatus("读取云端...");
       const { data, error } = await sbClient
-        .from("calculator_profiles")
+        .from("calculator_project_states")
         .select("data")
-        .eq("user_id", user.id)
+        .eq("project_id", projectId)
         .maybeSingle();
       syncingCloud = false;
       if (error) {
@@ -723,12 +746,24 @@
       }
       if (data?.data) {
         state = sanitizeCloudData(data.data);
-        localStorage.setItem(storageKey, JSON.stringify(state));
-        setAuthStatus("已加载云端数据");
+        localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
+        setAuthStatus("已加载当前项目数据");
       } else {
-        state = structuredClone(defaultState);
-        localStorage.setItem(storageKey, JSON.stringify(state));
-        setAuthStatus("新账号空白模板");
+        const { data: legacyData } = await sbClient
+          .from("calculator_profiles")
+          .select("data")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        if (legacyData?.data) {
+          state = sanitizeCloudData(legacyData.data);
+          localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
+          await saveCloudData(false);
+          setAuthStatus("已迁移旧账号数据到当前项目");
+        } else {
+          state = structuredClone(defaultState);
+          localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
+          setAuthStatus("当前项目暂无成本数据");
+        }
       }
       render();
     }

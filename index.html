@@ -26,7 +26,7 @@
     }
     .shell {
       display: grid;
-      grid-template-columns: 280px minmax(0, 1fr);
+      grid-template-columns: 292px minmax(0, 1fr);
       min-height: 100vh;
     }
     aside {
@@ -35,29 +35,20 @@
       height: 100vh;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
       padding: 22px 16px;
       background: rgba(255,255,255,.88);
       border-right: 1px solid var(--line);
       backdrop-filter: blur(12px);
+      overflow: auto;
     }
     .brand {
       padding: 8px 8px 14px;
       border-bottom: 1px solid var(--line);
     }
-    .brand h1 {
-      margin: 0;
-      font-size: 25px;
-      line-height: 1.2;
-      letter-spacing: 0;
-    }
-    .brand p {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 13px;
-      line-height: 1.6;
-    }
-    .auth {
+    .brand h1 { margin: 0; font-size: 25px; line-height: 1.2; }
+    .brand p { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.6; }
+    .side-card {
       display: grid;
       gap: 10px;
       padding: 12px;
@@ -65,10 +56,9 @@
       border-radius: 18px;
       background: #f8fbff;
     }
-    .auth b {
-      font-size: 15px;
-    }
-    .auth input {
+    .side-card b { font-size: 15px; }
+    .side-card input,
+    .side-card select {
       width: 100%;
       border: 1px solid var(--line);
       border-radius: 12px;
@@ -77,11 +67,7 @@
       color: var(--text);
       font-weight: 800;
     }
-    .auth-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 8px;
-    }
+    .auth-actions, .project-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
     button, .ghost {
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -98,22 +84,25 @@
       background: linear-gradient(135deg, var(--brand), var(--brand2));
       box-shadow: 0 12px 24px rgba(91,69,232,.18);
     }
-    button.danger {
-      color: var(--bad);
-      border-color: #fecaca;
-    }
-    .auth-status {
+    button.danger { color: var(--bad); border-color: #fecaca; }
+    button:disabled, select:disabled, input:disabled { opacity: .55; cursor: not-allowed; }
+    .status {
       min-height: 18px;
       color: var(--muted);
       font-size: 12px;
       line-height: 1.5;
       font-weight: 800;
     }
-    .auth-status.ok { color: var(--good); }
-    .nav {
-      display: grid;
-      gap: 10px;
+    .status.ok { color: var(--good); }
+    .project-name {
+      color: #3730a3;
+      background: #eef2ff;
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+      font-weight: 900;
     }
+    .nav { display: grid; gap: 10px; }
     .nav button {
       width: 100%;
       display: grid;
@@ -122,11 +111,7 @@
       background: #fff;
       padding: 16px 18px;
     }
-    .nav button span {
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 800;
-    }
+    .nav button span { color: var(--muted); font-size: 13px; font-weight: 800; }
     .nav button.active {
       color: #fff;
       border-color: transparent;
@@ -145,68 +130,14 @@
       line-height: 1.6;
       font-weight: 800;
     }
-    main {
-      min-width: 0;
-      display: grid;
-      grid-template-rows: auto minmax(0, 1fr);
-    }
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 16px 22px;
-      background: rgba(255,255,255,.74);
-      border-bottom: 1px solid var(--line);
-      backdrop-filter: blur(10px);
-    }
-    .title {
-      display: grid;
-      gap: 4px;
-      min-width: 0;
-    }
-    .title b {
-      font-size: 18px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .title span {
-      color: var(--muted);
-      font-size: 13px;
-    }
-    .actions {
-      display: flex;
-      gap: 10px;
-      flex-wrap: wrap;
-    }
-    .actions a {
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      background: #fff;
-      padding: 9px 12px;
-      color: var(--text);
-      text-decoration: none;
-      font-size: 13px;
-      font-weight: 900;
-    }
-    iframe {
-      width: 100%;
-      height: 100%;
-      border: 0;
-      background: #fff;
-    }
+    main { min-width: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
+    iframe { width: 100%; height: 100%; border: 0; background: #fff; }
     @media (max-width: 900px) {
       .shell { grid-template-columns: 1fr; }
-      aside {
-        position: static;
-        height: auto;
-        padding: 14px;
-      }
+      aside { position: static; height: auto; padding: 14px; }
       .nav { grid-template-columns: 1fr 1fr; }
       .tip { margin-top: 0; }
       main { min-height: 76vh; }
-      .topbar { align-items: flex-start; flex-direction: column; }
     }
   </style>
 </head>
@@ -215,10 +146,10 @@
     <aside>
       <div class="brand">
         <h1>BM 运营工具中心</h1>
-        <p>成本测算、商品卡分析统一入口。登录一次后，两个工具复用同一个 BM 账号会话。</p>
+        <p>账号是第一层，项目是第二层。选择项目后，成本测算和商品卡分析都会读取当前项目的数据。</p>
       </div>
 
-      <div class="auth">
+      <div class="side-card">
         <b>账号登录</b>
         <input id="authEmail" type="email" placeholder="邮箱">
         <input id="authPassword" type="password" placeholder="密码">
@@ -227,7 +158,21 @@
           <button id="signupBtn">注册</button>
         </div>
         <button class="danger" id="logoutBtn" style="display:none">退出登录</button>
-        <div class="auth-status" id="authStatus">游客模式，数据仅保存在本机或各工具本地缓存。</div>
+        <div class="status" id="authStatus">游客模式，数据仅保存在本机或各工具本地缓存。</div>
+      </div>
+
+      <div class="side-card">
+        <b>项目管理</b>
+        <select id="projectSelect" disabled>
+          <option value="">请先登录</option>
+        </select>
+        <input id="projectName" placeholder="新项目名称" disabled>
+        <div class="project-actions">
+          <button class="primary" id="createProjectBtn" disabled>新建项目</button>
+          <button id="refreshProjectsBtn" disabled>刷新</button>
+        </div>
+        <div class="project-name" id="projectLabel">当前项目：未选择</div>
+        <div class="status" id="projectStatus">登录后可管理多项目数据。</div>
       </div>
 
       <div class="nav">
@@ -236,23 +181,13 @@
           <span>项目成本、ROI、投流空间</span>
         </button>
         <button data-tool="product-card">
-          商品卡分析工具
+          BM-TikTok Shop TH 商品卡分析工具
           <span>Traffic/List、PID、诊断归因</span>
         </button>
       </div>
-      <div class="tip">账号登录统一放在这里。切换工具时会复用同一个 Supabase 登录状态，右侧工具页自己的登录条会自动隐藏。</div>
+      <div class="tip">切换项目时，右侧工具会自动刷新。商品卡数据和成本测算数据分开保存，但都归属同一个当前项目。</div>
     </aside>
     <main>
-      <div class="topbar">
-        <div class="title">
-          <b id="toolTitle">成本利润计算器</b>
-          <span id="toolDesc">项目成本、ROI、投流空间测算</span>
-        </div>
-        <div class="actions">
-          <a id="openNew" href="BM-profit-calculator/" target="_blank" rel="noreferrer">新窗口打开</a>
-          <a href="BM-product-card-bi/" target="_blank" rel="noreferrer">商品卡直达</a>
-        </div>
-      </div>
       <iframe id="toolFrame" src="BM-profit-calculator/" title="BM Tool"></iframe>
     </main>
   </div>
@@ -262,40 +197,59 @@
     const supabaseUrl = "https://dwneujmcyuwzmflqpqxf.supabase.co";
     const supabaseAnonKey = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
     const sbClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+    const BM_PROJECT_KEY = "bm_current_project_v1";
+    const BI_PROJECT_KEY = "product_card_bi_current_project_v1";
+    const CALC_PROJECT_KEY = "profit_calculator_current_project_v1";
 
     const tools = {
-      profit: {
-        title: "成本利润计算器",
-        desc: "项目成本、ROI、投流空间测算",
-        url: "BM-profit-calculator/"
-      },
-      "product-card": {
-        title: "商品卡分析工具",
-        desc: "Traffic/List、PID、每日诊断和变化归因",
-        url: "BM-product-card-bi/"
-      }
+      profit: { url: "BM-profit-calculator/" },
+      "product-card": { url: "BM-product-card-bi/" }
     };
     const buttons = [...document.querySelectorAll("[data-tool]")];
     const frame = document.getElementById("toolFrame");
-    const toolTitle = document.getElementById("toolTitle");
-    const toolDesc = document.getElementById("toolDesc");
-    const openNew = document.getElementById("openNew");
     const authEmail = document.getElementById("authEmail");
     const authPassword = document.getElementById("authPassword");
     const authStatus = document.getElementById("authStatus");
     const logoutBtn = document.getElementById("logoutBtn");
+    const projectSelect = document.getElementById("projectSelect");
+    const projectName = document.getElementById("projectName");
+    const projectLabel = document.getElementById("projectLabel");
+    const projectStatus = document.getElementById("projectStatus");
+    const createProjectBtn = document.getElementById("createProjectBtn");
+    const refreshProjectsBtn = document.getElementById("refreshProjectsBtn");
 
-    function setAuthStatus(text, ok = false) {
-      authStatus.textContent = text;
-      authStatus.classList.toggle("ok", ok);
+    let currentUser = null;
+    let currentProjectId = localStorage.getItem(BM_PROJECT_KEY) || "";
+    let projects = [];
+
+    function setStatus(el, text, ok = false) {
+      el.textContent = text;
+      el.classList.toggle("ok", ok);
+    }
+
+    function selectedProject() {
+      return projects.find(p => p.id === currentProjectId) || null;
+    }
+
+    function syncProjectKeys(projectId) {
+      currentProjectId = projectId || "";
+      if (currentProjectId) {
+        localStorage.setItem(BM_PROJECT_KEY, currentProjectId);
+        localStorage.setItem(BI_PROJECT_KEY, currentProjectId);
+        localStorage.setItem(CALC_PROJECT_KEY, currentProjectId);
+      } else {
+        localStorage.removeItem(BM_PROJECT_KEY);
+        localStorage.removeItem(BI_PROJECT_KEY);
+        localStorage.removeItem(CALC_PROJECT_KEY);
+      }
+      const project = selectedProject();
+      projectLabel.textContent = `当前项目：${project ? project.name : "未选择"}`;
+      projectSelect.value = currentProjectId;
     }
 
     function refreshToolFrame() {
-      try {
-        frame.contentWindow.location.reload();
-      } catch {
-        frame.src = frame.src;
-      }
+      try { frame.contentWindow.location.reload(); }
+      catch { frame.src = frame.src; }
     }
 
     function hideEmbeddedAuth() {
@@ -303,78 +257,172 @@
         const doc = frame.contentDocument;
         if (!doc) return;
         const style = doc.createElement("style");
-        style.textContent = `
-          .auth-box,
-          .authPanel {
-            display: none !important;
-          }
-        `;
+        style.textContent = `.auth-box,.authPanel{display:none!important}`;
         doc.head.appendChild(style);
-      } catch {
-        // Same-origin pages can be styled. If opened elsewhere, skip silently.
+      } catch {}
+    }
+
+    function renderProjects() {
+      projectSelect.innerHTML = "";
+      if (!currentUser) {
+        projectSelect.innerHTML = `<option value="">请先登录</option>`;
+        projectSelect.disabled = true;
+        projectName.disabled = true;
+        createProjectBtn.disabled = true;
+        refreshProjectsBtn.disabled = true;
+        syncProjectKeys("");
+        return;
       }
+      projectSelect.disabled = !projects.length;
+      projectName.disabled = false;
+      createProjectBtn.disabled = false;
+      refreshProjectsBtn.disabled = false;
+      if (!projects.length) {
+        projectSelect.innerHTML = `<option value="">暂无项目</option>`;
+      } else {
+        projectSelect.innerHTML = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
+      }
+      const remembered = localStorage.getItem(BM_PROJECT_KEY);
+      const nextProjectId = projects.some(p => p.id === currentProjectId) ? currentProjectId
+        : projects.some(p => p.id === remembered) ? remembered
+        : projects[0]?.id || "";
+      syncProjectKeys(nextProjectId);
+    }
+
+    async function ensureDefaultProject() {
+      if (!currentUser || projects.length) return;
+      const { data, error } = await sbClient
+        .from("bi_projects")
+        .insert({ user_id: currentUser.id, name: "默认项目" })
+        .select()
+        .single();
+      if (error) {
+        setStatus(projectStatus, `创建默认项目失败：${error.message}`);
+        return;
+      }
+      await sbClient.from("bi_project_states").upsert({
+        project_id: data.id,
+        user_id: currentUser.id,
+        data: { traffic: {}, list: {} },
+        updated_at: new Date().toISOString()
+      });
+      projects = [data];
+    }
+
+    async function loadProjects(refreshFrame = false) {
+      if (!currentUser) return;
+      setStatus(projectStatus, "读取项目列表...");
+      const { data, error } = await sbClient
+        .from("bi_projects")
+        .select("id,name,created_at,updated_at")
+        .eq("active", true)
+        .order("updated_at", { ascending: false });
+      if (error) {
+        setStatus(projectStatus, `读取项目失败：${error.message}`);
+        return;
+      }
+      projects = data || [];
+      await ensureDefaultProject();
+      renderProjects();
+      setStatus(projectStatus, `已加载 ${projects.length} 个项目`, true);
+      if (refreshFrame) refreshToolFrame();
     }
 
     async function updateAuthUi() {
       const { data } = await sbClient.auth.getSession();
-      const user = data.session?.user || null;
-      logoutBtn.style.display = user ? "" : "none";
-      if (user) {
-        authEmail.value = user.email || authEmail.value;
-        setAuthStatus(`${user.email || "已登录"}，两个工具会复用该账号。`, true);
+      currentUser = data.session?.user || null;
+      logoutBtn.style.display = currentUser ? "" : "none";
+      if (currentUser) {
+        authEmail.value = currentUser.email || authEmail.value;
+        setStatus(authStatus, `${currentUser.email || "已登录"}`, true);
+        await loadProjects(false);
       } else {
-        setAuthStatus("游客模式，数据仅保存在本机或各工具本地缓存。", false);
+        projects = [];
+        renderProjects();
+        setStatus(authStatus, "游客模式，数据仅保存在本机或各工具本地缓存。", false);
+        setStatus(projectStatus, "登录后可管理多项目数据。");
       }
     }
 
     async function login() {
       const email = authEmail.value.trim();
       const password = authPassword.value;
-      if (!email || !password) return setAuthStatus("请输入邮箱和密码");
-      setAuthStatus("登录中...");
+      if (!email || !password) return setStatus(authStatus, "请输入邮箱和密码");
+      setStatus(authStatus, "登录中...");
       const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
-      if (error) return setAuthStatus(`登录失败：${error.message}`);
-      setAuthStatus(`${data.user?.email || "已登录"}，正在同步工具状态。`, true);
-      refreshToolFrame();
-      updateAuthUi();
+      if (error) return setStatus(authStatus, `登录失败：${error.message}`);
+      currentUser = data.user;
+      setStatus(authStatus, `${data.user?.email || "已登录"}`, true);
+      await loadProjects(true);
     }
 
     async function signup() {
       const email = authEmail.value.trim();
       const password = authPassword.value;
-      if (!email || !password) return setAuthStatus("请输入邮箱和密码");
-      setAuthStatus("注册中...");
+      if (!email || !password) return setStatus(authStatus, "请输入邮箱和密码");
+      setStatus(authStatus, "注册中...");
       const { data, error } = await sbClient.auth.signUp({ email, password });
-      if (error) return setAuthStatus(`注册失败：${error.message}`);
+      if (error) return setStatus(authStatus, `注册失败：${error.message}`);
       if (data.session?.user) {
-        setAuthStatus(`${data.session.user.email || "注册成功"}，正在同步工具状态。`, true);
-        refreshToolFrame();
+        currentUser = data.session.user;
+        setStatus(authStatus, `${data.session.user.email || "注册成功"}`, true);
+        await loadProjects(true);
       } else {
-        setAuthStatus("注册成功，请先验证邮箱后登录。");
+        setStatus(authStatus, "注册成功，请先验证邮箱后登录。");
       }
-      updateAuthUi();
     }
 
     async function logout() {
       await sbClient.auth.signOut();
-      setAuthStatus("已退出登录。");
+      currentUser = null;
+      projects = [];
+      renderProjects();
+      setStatus(authStatus, "已退出登录。");
       refreshToolFrame();
-      updateAuthUi();
+    }
+
+    async function createProject() {
+      if (!currentUser) return setStatus(projectStatus, "请先登录");
+      const name = projectName.value.trim();
+      if (!name) return setStatus(projectStatus, "请输入项目名称");
+      setStatus(projectStatus, "新建项目中...");
+      const { data, error } = await sbClient
+        .from("bi_projects")
+        .insert({ user_id: currentUser.id, name })
+        .select()
+        .single();
+      if (error) return setStatus(projectStatus, `新建失败：${error.message}`);
+      await sbClient.from("bi_project_states").upsert({
+        project_id: data.id,
+        user_id: currentUser.id,
+        data: { traffic: {}, list: {} },
+        updated_at: new Date().toISOString()
+      });
+      projects = [data, ...projects];
+      projectName.value = "";
+      syncProjectKeys(data.id);
+      renderProjects();
+      setStatus(projectStatus, `已新建项目：${data.name}`, true);
+      refreshToolFrame();
     }
 
     function selectTool(key, push = true) {
       const tool = tools[key] || tools.profit;
       buttons.forEach(btn => btn.classList.toggle("active", btn.dataset.tool === key));
       frame.src = tool.url;
-      toolTitle.textContent = tool.title;
-      toolDesc.textContent = tool.desc;
-      openNew.href = tool.url;
       if (push) history.replaceState(null, "", "#" + key);
     }
 
     document.getElementById("loginBtn").addEventListener("click", login);
     document.getElementById("signupBtn").addEventListener("click", signup);
     logoutBtn.addEventListener("click", logout);
+    createProjectBtn.addEventListener("click", createProject);
+    refreshProjectsBtn.addEventListener("click", () => loadProjects(true));
+    projectSelect.addEventListener("change", e => {
+      syncProjectKeys(e.target.value);
+      setStatus(projectStatus, `已切换项目：${selectedProject()?.name || "未选择"}`, true);
+      refreshToolFrame();
+    });
     buttons.forEach(btn => btn.addEventListener("click", () => selectTool(btn.dataset.tool)));
     frame.addEventListener("load", () => setTimeout(hideEmbeddedAuth, 100));
     sbClient.auth.onAuthStateChange(() => updateAuthUi());
