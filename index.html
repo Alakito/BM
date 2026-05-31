@@ -240,7 +240,6 @@
           <input id="authPassword" type="password" placeholder="密码">
           <button id="loginBtn">登录</button>
           <button id="signupBtn">注册</button>
-          <button id="googleLoginBtn">Google 登录</button>
           <button id="cloudSaveBtn">云端保存</button>
           <button id="logoutBtn" style="display:none">退出</button>
           <span class="auth-status" id="authStatus">游客模式</span>
@@ -1162,18 +1161,6 @@
       updateAuthUi();
       setAuthStatus(data.session ? "注册成功" : "请查收验证邮件");
       if (data.session && currentUser) await loadCloudData(currentUser);
-    };
-    document.getElementById("googleLoginBtn").onclick = async () => {
-      if (!sbClient) return setAuthStatus("云端未启用");
-      setAuthStatus("跳转 Google...");
-      const { error } = await sbClient.auth.signInWithOAuth({
-        provider: "google",
-        options: { redirectTo: window.location.origin + window.location.pathname }
-      });
-      if (error) {
-        setAuthStatus("Google 登录失败");
-        alert(error.message);
-      }
     };
     document.getElementById("logoutBtn").onclick = async () => {
       if (!sbClient) return;
