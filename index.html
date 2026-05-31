@@ -13,6 +13,8 @@
       --line: #dbe3ef;
       --brand: #5b45e8;
       --brand2: #7c3aed;
+      --good: #16a34a;
+      --bad: #dc2626;
     }
     * { box-sizing: border-box; }
     body {
@@ -24,7 +26,7 @@
     }
     .shell {
       display: grid;
-      grid-template-columns: 248px minmax(0, 1fr);
+      grid-template-columns: 280px minmax(0, 1fr);
       min-height: 100vh;
     }
     aside {
@@ -33,19 +35,20 @@
       height: 100vh;
       display: flex;
       flex-direction: column;
-      gap: 18px;
+      gap: 16px;
       padding: 22px 16px;
-      background: rgba(255,255,255,.86);
+      background: rgba(255,255,255,.88);
       border-right: 1px solid var(--line);
       backdrop-filter: blur(12px);
     }
     .brand {
-      padding: 8px 8px 16px;
+      padding: 8px 8px 14px;
       border-bottom: 1px solid var(--line);
     }
     .brand h1 {
       margin: 0;
-      font-size: 22px;
+      font-size: 25px;
+      line-height: 1.2;
       letter-spacing: 0;
     }
     .brand p {
@@ -54,6 +57,59 @@
       font-size: 13px;
       line-height: 1.6;
     }
+    .auth {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1px solid #dbeafe;
+      border-radius: 18px;
+      background: #f8fbff;
+    }
+    .auth b {
+      font-size: 15px;
+    }
+    .auth input {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      padding: 10px 11px;
+      color: var(--text);
+      font-weight: 800;
+    }
+    .auth-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    button, .ghost {
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      background: #fff;
+      padding: 10px 12px;
+      color: var(--text);
+      cursor: pointer;
+      font-weight: 900;
+      text-decoration: none;
+    }
+    button.primary {
+      color: #fff;
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow: 0 12px 24px rgba(91,69,232,.18);
+    }
+    button.danger {
+      color: var(--bad);
+      border-color: #fecaca;
+    }
+    .auth-status {
+      min-height: 18px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      font-weight: 800;
+    }
+    .auth-status.ok { color: var(--good); }
     .nav {
       display: grid;
       gap: 10px;
@@ -63,18 +119,13 @@
       display: grid;
       gap: 4px;
       text-align: left;
-      border: 1px solid var(--line);
-      border-radius: 14px;
       background: #fff;
-      padding: 13px 14px;
-      color: var(--text);
-      cursor: pointer;
-      font-weight: 900;
+      padding: 16px 18px;
     }
     .nav button span {
       color: var(--muted);
-      font-size: 12px;
-      font-weight: 700;
+      font-size: 13px;
+      font-weight: 800;
     }
     .nav button.active {
       color: #fff;
@@ -82,12 +133,12 @@
       background: linear-gradient(135deg, var(--brand), var(--brand2));
       box-shadow: 0 16px 32px rgba(91,69,232,.22);
     }
-    .nav button.active span { color: rgba(255,255,255,.78); }
+    .nav button.active span { color: rgba(255,255,255,.82); }
     .tip {
       margin-top: auto;
       padding: 12px;
       border: 1px solid #c7d2fe;
-      border-radius: 14px;
+      border-radius: 16px;
       background: #eef2ff;
       color: #3730a3;
       font-size: 12px;
@@ -105,7 +156,7 @@
       justify-content: space-between;
       gap: 16px;
       padding: 16px 22px;
-      background: rgba(255,255,255,.72);
+      background: rgba(255,255,255,.74);
       border-bottom: 1px solid var(--line);
       backdrop-filter: blur(10px);
     }
@@ -145,7 +196,7 @@
       border: 0;
       background: #fff;
     }
-    @media (max-width: 860px) {
+    @media (max-width: 900px) {
       .shell { grid-template-columns: 1fr; }
       aside {
         position: static;
@@ -164,8 +215,21 @@
     <aside>
       <div class="brand">
         <h1>BM 运营工具中心</h1>
-        <p>成本测算、商品卡分析统一入口。两个工具使用同一个 BM 账号体系。</p>
+        <p>成本测算、商品卡分析统一入口。登录一次后，两个工具复用同一个 BM 账号会话。</p>
       </div>
+
+      <div class="auth">
+        <b>账号登录</b>
+        <input id="authEmail" type="email" placeholder="邮箱">
+        <input id="authPassword" type="password" placeholder="密码">
+        <div class="auth-actions">
+          <button class="primary" id="loginBtn">登录</button>
+          <button id="signupBtn">注册</button>
+        </div>
+        <button class="danger" id="logoutBtn" style="display:none">退出登录</button>
+        <div class="auth-status" id="authStatus">游客模式，数据仅保存在本机或各工具本地缓存。</div>
+      </div>
+
       <div class="nav">
         <button class="active" data-tool="profit">
           成本利润计算器
@@ -176,7 +240,7 @@
           <span>Traffic/List、PID、诊断归因</span>
         </button>
       </div>
-      <div class="tip">同一个浏览器里登录一次后，切换工具会复用 BM 账号会话。若某个工具未立即识别登录状态，刷新右侧页面即可。</div>
+      <div class="tip">账号登录统一放在这里。切换工具时会复用同一个 Supabase 登录状态，右侧工具页自己的登录条会自动隐藏。</div>
     </aside>
     <main>
       <div class="topbar">
@@ -192,7 +256,13 @@
       <iframe id="toolFrame" src="BM-profit-calculator/" title="BM Tool"></iframe>
     </main>
   </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script>
+    const supabaseUrl = "https://dwneujmcyuwzmflqpqxf.supabase.co";
+    const supabaseAnonKey = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
+    const sbClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+
     const tools = {
       profit: {
         title: "成本利润计算器",
@@ -210,6 +280,87 @@
     const toolTitle = document.getElementById("toolTitle");
     const toolDesc = document.getElementById("toolDesc");
     const openNew = document.getElementById("openNew");
+    const authEmail = document.getElementById("authEmail");
+    const authPassword = document.getElementById("authPassword");
+    const authStatus = document.getElementById("authStatus");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+    function setAuthStatus(text, ok = false) {
+      authStatus.textContent = text;
+      authStatus.classList.toggle("ok", ok);
+    }
+
+    function refreshToolFrame() {
+      try {
+        frame.contentWindow.location.reload();
+      } catch {
+        frame.src = frame.src;
+      }
+    }
+
+    function hideEmbeddedAuth() {
+      try {
+        const doc = frame.contentDocument;
+        if (!doc) return;
+        const style = doc.createElement("style");
+        style.textContent = `
+          .auth-box,
+          .authPanel {
+            display: none !important;
+          }
+        `;
+        doc.head.appendChild(style);
+      } catch {
+        // Same-origin pages can be styled. If opened elsewhere, skip silently.
+      }
+    }
+
+    async function updateAuthUi() {
+      const { data } = await sbClient.auth.getSession();
+      const user = data.session?.user || null;
+      logoutBtn.style.display = user ? "" : "none";
+      if (user) {
+        authEmail.value = user.email || authEmail.value;
+        setAuthStatus(`${user.email || "已登录"}，两个工具会复用该账号。`, true);
+      } else {
+        setAuthStatus("游客模式，数据仅保存在本机或各工具本地缓存。", false);
+      }
+    }
+
+    async function login() {
+      const email = authEmail.value.trim();
+      const password = authPassword.value;
+      if (!email || !password) return setAuthStatus("请输入邮箱和密码");
+      setAuthStatus("登录中...");
+      const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
+      if (error) return setAuthStatus(`登录失败：${error.message}`);
+      setAuthStatus(`${data.user?.email || "已登录"}，正在同步工具状态。`, true);
+      refreshToolFrame();
+      updateAuthUi();
+    }
+
+    async function signup() {
+      const email = authEmail.value.trim();
+      const password = authPassword.value;
+      if (!email || !password) return setAuthStatus("请输入邮箱和密码");
+      setAuthStatus("注册中...");
+      const { data, error } = await sbClient.auth.signUp({ email, password });
+      if (error) return setAuthStatus(`注册失败：${error.message}`);
+      if (data.session?.user) {
+        setAuthStatus(`${data.session.user.email || "注册成功"}，正在同步工具状态。`, true);
+        refreshToolFrame();
+      } else {
+        setAuthStatus("注册成功，请先验证邮箱后登录。");
+      }
+      updateAuthUi();
+    }
+
+    async function logout() {
+      await sbClient.auth.signOut();
+      setAuthStatus("已退出登录。");
+      refreshToolFrame();
+      updateAuthUi();
+    }
 
     function selectTool(key, push = true) {
       const tool = tools[key] || tools.profit;
@@ -220,8 +371,16 @@
       openNew.href = tool.url;
       if (push) history.replaceState(null, "", "#" + key);
     }
+
+    document.getElementById("loginBtn").addEventListener("click", login);
+    document.getElementById("signupBtn").addEventListener("click", signup);
+    logoutBtn.addEventListener("click", logout);
     buttons.forEach(btn => btn.addEventListener("click", () => selectTool(btn.dataset.tool)));
+    frame.addEventListener("load", () => setTimeout(hideEmbeddedAuth, 100));
+    sbClient.auth.onAuthStateChange(() => updateAuthUi());
+
     selectTool(location.hash.replace("#", "") || "profit", false);
+    updateAuthUi();
   </script>
 </body>
 </html>
