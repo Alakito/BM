@@ -192,11 +192,18 @@
     </main>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="assets/supabase-umd.js"></script>
   <script>
     const supabaseUrl = "https://dwneujmcyuwzmflqpqxf.supabase.co";
     const supabaseAnonKey = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
-    const sbClient = window.supabase.createClient(supabaseUrl, supabaseAnonKey);
+    const authLock = async (_name, _acquireTimeout, fn) => await fn();
+    const supabaseGlobal = window.supabase || globalThis.supabase || (typeof supabase !== "undefined" ? supabase : null);
+    const sbClient = supabaseGlobal?.createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storageKey: "bm_tools_auth_v1",
+        lock: authLock
+      }
+    });
     const BM_PROJECT_KEY = "bm_current_project_v1";
     const BI_PROJECT_KEY = "product_card_bi_current_project_v1";
     const CALC_PROJECT_KEY = "profit_calculator_current_project_v1";
@@ -225,6 +232,14 @@
     function setStatus(el, text, ok = false) {
       el.textContent = text;
       el.classList.toggle("ok", ok);
+    }
+
+    function withTimeout(promise, message, ms = 12000) {
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     }
 
     function selectedProject() {
@@ -291,45 +306,53 @@
 
     async function ensureDefaultProject() {
       if (!currentUser || projects.length) return;
-      const { data, error } = await sbClient
+      const { data, error } = await withTimeout(sbClient
         .from("bi_projects")
         .insert({ user_id: currentUser.id, name: "默认项目" })
         .select()
-        .single();
+        .single(), "创建默认项目超时，请稍后重试。");
       if (error) {
         setStatus(projectStatus, `创建默认项目失败：${error.message}`);
         return;
       }
-      await sbClient.from("bi_project_states").upsert({
+      await withTimeout(sbClient.from("bi_project_states").upsert({
         project_id: data.id,
         user_id: currentUser.id,
         data: { traffic: {}, list: {} },
         updated_at: new Date().toISOString()
-      });
+      }), "初始化默认项目超时，请稍后重试。");
       projects = [data];
     }
 
     async function loadProjects(refreshFrame = false) {
       if (!currentUser) return;
       setStatus(projectStatus, "读取项目列表...");
-      const { data, error } = await sbClient
+      try {
+        const { data, error } = await withTimeout(sbClient
         .from("bi_projects")
         .select("id,name,created_at,updated_at")
         .eq("active", true)
-        .order("updated_at", { ascending: false });
-      if (error) {
-        setStatus(projectStatus, `读取项目失败：${error.message}`);
-        return;
+        .order("updated_at", { ascending: false }), "读取项目列表超时，请检查网络或刷新页面。");
+        if (error) {
+          setStatus(projectStatus, `读取项目失败：${error.message}`);
+          return;
+        }
+        projects = data || [];
+        await ensureDefaultProject();
+        renderProjects();
+        setStatus(projectStatus, `已加载 ${projects.length} 个项目`, true);
+        if (refreshFrame) refreshToolFrame();
+      } catch (err) {
+        setStatus(projectStatus, err.message || "读取项目失败，请稍后重试。");
       }
-      projects = data || [];
-      await ensureDefaultProject();
-      renderProjects();
-      setStatus(projectStatus, `已加载 ${projects.length} 个项目`, true);
-      if (refreshFrame) refreshToolFrame();
     }
 
     async function updateAuthUi() {
-      const { data } = await sbClient.auth.getSession();
+      if (!sbClient) {
+        setStatus(authStatus, "登录模块加载失败，请刷新页面。");
+        return;
+      }
+      const { data } = await withTimeout(sbClient.auth.getSession(), "读取登录状态超时，请刷新页面。", 8000);
       currentUser = data.session?.user || null;
       logoutBtn.style.display = currentUser ? "" : "none";
       if (currentUser) {
@@ -348,32 +371,52 @@
       const email = authEmail.value.trim();
       const password = authPassword.value;
       if (!email || !password) return setStatus(authStatus, "请输入邮箱和密码");
+      if (!sbClient) return setStatus(authStatus, "登录模块加载失败，请刷新页面。");
+      loginBtn.disabled = true;
       setStatus(authStatus, "登录中...");
-      const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
-      if (error) return setStatus(authStatus, `登录失败：${error.message}`);
-      currentUser = data.user;
-      setStatus(authStatus, `${data.user?.email || "已登录"}`, true);
-      await loadProjects(true);
+      try {
+        const { data, error } = await withTimeout(
+          sbClient.auth.signInWithPassword({ email, password }),
+          "登录超时：请检查网络，或刷新页面后重试。",
+          12000
+        );
+        if (error) return setStatus(authStatus, `登录失败：${error.message}`);
+        currentUser = data.user;
+        setStatus(authStatus, `${data.user?.email || "已登录"}`, true);
+        await loadProjects(true);
+      } catch (err) {
+        setStatus(authStatus, err.message || "登录失败，请稍后重试。");
+      } finally {
+        loginBtn.disabled = false;
+      }
     }
 
     async function signup() {
       const email = authEmail.value.trim();
       const password = authPassword.value;
       if (!email || !password) return setStatus(authStatus, "请输入邮箱和密码");
+      if (!sbClient) return setStatus(authStatus, "登录模块加载失败，请刷新页面。");
+      signupBtn.disabled = true;
       setStatus(authStatus, "注册中...");
-      const { data, error } = await sbClient.auth.signUp({ email, password });
-      if (error) return setStatus(authStatus, `注册失败：${error.message}`);
-      if (data.session?.user) {
-        currentUser = data.session.user;
-        setStatus(authStatus, `${data.session.user.email || "注册成功"}`, true);
-        await loadProjects(true);
-      } else {
-        setStatus(authStatus, "注册成功，请先验证邮箱后登录。");
+      try {
+        const { data, error } = await withTimeout(sbClient.auth.signUp({ email, password }), "注册超时，请稍后重试。");
+        if (error) return setStatus(authStatus, `注册失败：${error.message}`);
+        if (data.session?.user) {
+          currentUser = data.session.user;
+          setStatus(authStatus, `${data.session.user.email || "注册成功"}`, true);
+          await loadProjects(true);
+        } else {
+          setStatus(authStatus, "注册成功，请先验证邮箱后登录。");
+        }
+      } catch (err) {
+        setStatus(authStatus, err.message || "注册失败，请稍后重试。");
+      } finally {
+        signupBtn.disabled = false;
       }
     }
 
     async function logout() {
-      await sbClient.auth.signOut();
+      if (sbClient) await withTimeout(sbClient.auth.signOut(), "退出登录超时，请刷新页面。", 8000).catch(() => {});
       currentUser = null;
       projects = [];
       renderProjects();
@@ -386,18 +429,18 @@
       const name = projectName.value.trim();
       if (!name) return setStatus(projectStatus, "请输入项目名称");
       setStatus(projectStatus, "新建项目中...");
-      const { data, error } = await sbClient
+      const { data, error } = await withTimeout(sbClient
         .from("bi_projects")
         .insert({ user_id: currentUser.id, name })
         .select()
-        .single();
+        .single(), "新建项目超时，请稍后重试。");
       if (error) return setStatus(projectStatus, `新建失败：${error.message}`);
-      await sbClient.from("bi_project_states").upsert({
+      await withTimeout(sbClient.from("bi_project_states").upsert({
         project_id: data.id,
         user_id: currentUser.id,
         data: { traffic: {}, list: {} },
         updated_at: new Date().toISOString()
-      });
+      }), "初始化项目超时，请稍后重试。");
       projects = [data, ...projects];
       projectName.value = "";
       syncProjectKeys(data.id);
@@ -413,8 +456,10 @@
       if (push) history.replaceState(null, "", "#" + key);
     }
 
-    document.getElementById("loginBtn").addEventListener("click", login);
-    document.getElementById("signupBtn").addEventListener("click", signup);
+    const loginBtn = document.getElementById("loginBtn");
+    const signupBtn = document.getElementById("signupBtn");
+    loginBtn.addEventListener("click", login);
+    signupBtn.addEventListener("click", signup);
     logoutBtn.addEventListener("click", logout);
     createProjectBtn.addEventListener("click", createProject);
     refreshProjectsBtn.addEventListener("click", () => loadProjects(true));
@@ -425,10 +470,10 @@
     });
     buttons.forEach(btn => btn.addEventListener("click", () => selectTool(btn.dataset.tool)));
     frame.addEventListener("load", () => setTimeout(hideEmbeddedAuth, 100));
-    sbClient.auth.onAuthStateChange(() => updateAuthUi());
+    if (sbClient) sbClient.auth.onAuthStateChange(() => updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。")));
 
     selectTool(location.hash.replace("#", "") || "profit", false);
-    updateAuthUi();
+    updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
   </script>
 </body>
 </html>

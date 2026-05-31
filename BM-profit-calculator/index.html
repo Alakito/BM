@@ -615,7 +615,7 @@
     </section>
   </main>
 
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="../assets/supabase-umd.js"></script>
   <script>
     const scenarios = ["日常", "小促", "大促"];
     const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -624,7 +624,14 @@
     const projectStorageKey = "profit_calculator_current_project_v1";
     const supabaseUrl = "https://dwneujmcyuwzmflqpqxf.supabase.co";
     const supabaseAnonKey = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
-    const sbClient = window.supabase?.createClient(supabaseUrl, supabaseAnonKey);
+    const authLock = async (_name, _acquireTimeout, fn) => await fn();
+    const supabaseGlobal = window.supabase || globalThis.supabase || (typeof supabase !== "undefined" ? supabase : null);
+    const sbClient = supabaseGlobal?.createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        storageKey: "bm_tools_auth_v1",
+        lock: authLock
+      }
+    });
     let currentUser = null;
     let cloudTimer = null;
     let syncingCloud = false;
@@ -695,6 +702,13 @@
       const el = document.getElementById("authStatus");
       if (el) el.textContent = text;
     }
+    function withTimeout(promise, message, ms = 12000) {
+      let timer;
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(message)), ms);
+      });
+      return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+    }
     function sanitizeCloudData(data) {
       return { ...structuredClone(defaultState), ...(data || {}) };
     }
@@ -708,14 +722,14 @@
       if (!currentUser) return setAuthStatus("请先登录");
       const projectId = currentProjectId();
       if (!projectId) return setAuthStatus("请先选择项目");
-      const { error } = await sbClient
+      const { error } = await withTimeout(sbClient
         .from("calculator_project_states")
         .upsert({
           project_id: projectId,
           user_id: currentUser.id,
           data: state,
           updated_at: new Date().toISOString()
-        }, { onConflict: "project_id" });
+        }, { onConflict: "project_id" }), "保存云端超时，请稍后重试。");
       if (error) {
         setAuthStatus("保存失败");
         if (showMessage) alert(error.message);
@@ -733,11 +747,11 @@
       }
       syncingCloud = true;
       setAuthStatus("读取云端...");
-      const { data, error } = await sbClient
+      const { data, error } = await withTimeout(sbClient
         .from("calculator_project_states")
         .select("data")
         .eq("project_id", projectId)
-        .maybeSingle();
+        .maybeSingle(), "读取云端超时，请稍后重试。");
       syncingCloud = false;
       if (error) {
         setAuthStatus("读取失败");
@@ -749,11 +763,11 @@
         localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
         setAuthStatus("已加载当前项目数据");
       } else {
-        const { data: legacyData } = await sbClient
+        const { data: legacyData } = await withTimeout(sbClient
           .from("calculator_profiles")
           .select("data")
           .eq("user_id", user.id)
-          .maybeSingle();
+          .maybeSingle(), "读取旧账号数据超时，请稍后重试。");
         if (legacyData?.data) {
           state = sanitizeCloudData(legacyData.data);
           localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
@@ -782,7 +796,7 @@
         setAuthStatus("云端未启用");
         return;
       }
-      const { data } = await sbClient.auth.getSession();
+      const { data } = await withTimeout(sbClient.auth.getSession(), "读取登录状态超时，请刷新页面。", 8000);
       currentUser = data.session?.user || null;
       updateAuthUi();
       if (currentUser) await loadCloudData(currentUser);
@@ -1389,15 +1403,23 @@
       const password = document.getElementById("authPassword").value;
       if (!email || !password) return setAuthStatus("请输入邮箱密码");
       setAuthStatus("登录中...");
-      const { data, error } = await sbClient.auth.signInWithPassword({ email, password });
-      if (error) {
-        setAuthStatus("登录失败");
-        alert(error.message);
-        return;
+      try {
+        const { data, error } = await withTimeout(
+          sbClient.auth.signInWithPassword({ email, password }),
+          "登录超时：请检查网络，或刷新页面后重试。",
+          12000
+        );
+        if (error) {
+          setAuthStatus("登录失败");
+          alert(error.message);
+          return;
+        }
+        currentUser = data.user;
+        updateAuthUi();
+        await loadCloudData(currentUser);
+      } catch (err) {
+        setAuthStatus(err.message || "登录失败");
       }
-      currentUser = data.user;
-      updateAuthUi();
-      await loadCloudData(currentUser);
     };
     document.getElementById("signupBtn").onclick = async () => {
       if (!sbClient) return setAuthStatus("云端未启用");
@@ -1405,20 +1427,24 @@
       const password = document.getElementById("authPassword").value;
       if (!email || !password) return setAuthStatus("请输入邮箱密码");
       setAuthStatus("注册中...");
-      const { data, error } = await sbClient.auth.signUp({ email, password });
-      if (error) {
-        setAuthStatus("注册失败");
-        alert(error.message);
-        return;
+      try {
+        const { data, error } = await withTimeout(sbClient.auth.signUp({ email, password }), "注册超时，请稍后重试。");
+        if (error) {
+          setAuthStatus("注册失败");
+          alert(error.message);
+          return;
+        }
+        currentUser = data.user;
+        updateAuthUi();
+        setAuthStatus(data.session ? "注册成功" : "请查收验证邮件");
+        if (data.session && currentUser) await loadCloudData(currentUser);
+      } catch (err) {
+        setAuthStatus(err.message || "注册失败");
       }
-      currentUser = data.user;
-      updateAuthUi();
-      setAuthStatus(data.session ? "注册成功" : "请查收验证邮件");
-      if (data.session && currentUser) await loadCloudData(currentUser);
     };
     document.getElementById("logoutBtn").onclick = async () => {
       if (!sbClient) return;
-      await sbClient.auth.signOut();
+      await withTimeout(sbClient.auth.signOut(), "退出登录超时，请刷新页面。", 8000).catch(() => {});
       currentUser = null;
       state = structuredClone(defaultState);
       localStorage.removeItem(storageKey);
