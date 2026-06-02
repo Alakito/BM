@@ -250,6 +250,7 @@
     let currentProjectId = localStorage.getItem(BM_PROJECT_KEY) || "";
     let projects = [];
     let passwordRecoveryMode = false;
+    let currentToolKey = location.hash.replace("#", "") || "profit";
 
     function setStatus(el, text, ok = false) {
       el.textContent = text;
@@ -284,9 +285,16 @@
       projectSelect.value = currentProjectId;
     }
 
+    function toolFrameUrl(key = currentToolKey) {
+      const tool = tools[key] || tools.profit;
+      const params = new URLSearchParams();
+      if (currentProjectId) params.set("project", currentProjectId);
+      params.set("v", Date.now().toString());
+      return `${tool.url}?${params.toString()}`;
+    }
+
     function refreshToolFrame() {
-      try { frame.contentWindow.location.reload(); }
-      catch { frame.src = frame.src; }
+      frame.src = toolFrameUrl();
     }
 
     function hideEmbeddedAuth() {
@@ -380,7 +388,7 @@
       if (currentUser) {
         authEmail.value = currentUser.email || authEmail.value;
         setStatus(authStatus, `${currentUser.email || "已登录"}`, true);
-        await loadProjects(false);
+        await loadProjects(true);
       } else {
         projects = [];
         renderProjects();
@@ -528,10 +536,10 @@
     }
 
     function selectTool(key, push = true) {
-      const tool = tools[key] || tools.profit;
+      currentToolKey = tools[key] ? key : "profit";
       buttons.forEach(btn => btn.classList.toggle("active", btn.dataset.tool === key));
-      frame.src = tool.url;
-      if (push) history.replaceState(null, "", "#" + key);
+      frame.src = toolFrameUrl(currentToolKey);
+      if (push) history.replaceState(null, "", "#" + currentToolKey);
     }
 
     const loginBtn = document.getElementById("loginBtn");
@@ -562,7 +570,7 @@
       updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
     });
 
-    selectTool(location.hash.replace("#", "") || "profit", false);
+    selectTool(currentToolKey, false);
     updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
   </script>
 </body>

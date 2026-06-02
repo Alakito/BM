@@ -681,7 +681,8 @@
     let state = loadState();
 
     function currentProjectId() {
-      return localStorage.getItem(projectStorageKey) || localStorage.getItem("bm_current_project_v1") || "";
+      const urlProject = new URLSearchParams(window.location.search).get("project") || "";
+      return urlProject || localStorage.getItem(projectStorageKey) || localStorage.getItem("bm_current_project_v1") || "";
     }
     function scopedStorageKey() {
       const id = currentProjectId();
@@ -695,7 +696,6 @@
     }
     function saveState() {
       localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
-      localStorage.setItem(storageKey, JSON.stringify(state));
       scheduleCloudSave();
     }
     function setAuthStatus(text) {
