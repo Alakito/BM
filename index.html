@@ -68,6 +68,8 @@
       font-weight: 800;
     }
     .auth-actions, .project-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #resetPanel { display: none; gap: 8px; }
+    #resetPanel.show { display: grid; }
     button, .ghost {
       border: 1px solid var(--line);
       border-radius: 14px;
@@ -85,6 +87,16 @@
       box-shadow: 0 12px 24px rgba(91,69,232,.18);
     }
     button.danger { color: var(--bad); border-color: #fecaca; }
+    button.link {
+      width: fit-content;
+      border: 0;
+      background: transparent;
+      padding: 0;
+      color: #4f46e5;
+      font-size: 12px;
+      font-weight: 900;
+      box-shadow: none;
+    }
     button:disabled, select:disabled, input:disabled { opacity: .55; cursor: not-allowed; }
     .status {
       min-height: 18px;
@@ -157,6 +169,12 @@
           <button class="primary" id="loginBtn">登录</button>
           <button id="signupBtn">注册</button>
         </div>
+        <button class="link" id="forgotPasswordBtn">忘记密码 / 重置密码</button>
+        <div id="resetPanel">
+          <input id="newPassword" type="password" placeholder="新密码，至少 6 位">
+          <input id="confirmPassword" type="password" placeholder="确认新密码">
+          <button class="primary" id="updatePasswordBtn">设置新密码</button>
+        </div>
         <button class="danger" id="logoutBtn" style="display:none">退出登录</button>
         <div class="status" id="authStatus">游客模式，数据仅保存在本机或各工具本地缓存。</div>
       </div>
@@ -217,6 +235,9 @@
     const authEmail = document.getElementById("authEmail");
     const authPassword = document.getElementById("authPassword");
     const authStatus = document.getElementById("authStatus");
+    const resetPanel = document.getElementById("resetPanel");
+    const newPassword = document.getElementById("newPassword");
+    const confirmPassword = document.getElementById("confirmPassword");
     const logoutBtn = document.getElementById("logoutBtn");
     const projectSelect = document.getElementById("projectSelect");
     const projectName = document.getElementById("projectName");
@@ -228,6 +249,7 @@
     let currentUser = null;
     let currentProjectId = localStorage.getItem(BM_PROJECT_KEY) || "";
     let projects = [];
+    let passwordRecoveryMode = false;
 
     function setStatus(el, text, ok = false) {
       el.textContent = text;
@@ -415,10 +437,66 @@
       }
     }
 
+    function resetRedirectUrl() {
+      return `${location.origin}${location.pathname}`;
+    }
+
+    async function sendPasswordReset() {
+      const email = authEmail.value.trim();
+      if (!email) return setStatus(authStatus, "请输入邮箱后再重置密码。");
+      if (!sbClient) return setStatus(authStatus, "登录模块加载失败，请刷新页面。");
+      forgotPasswordBtn.disabled = true;
+      setStatus(authStatus, "正在发送重置邮件...");
+      try {
+        const { error } = await withTimeout(
+          sbClient.auth.resetPasswordForEmail(email, { redirectTo: resetRedirectUrl() }),
+          "发送重置邮件超时，请稍后重试。",
+          12000
+        );
+        if (error) return setStatus(authStatus, `发送失败：${error.message}`);
+        setStatus(authStatus, "重置邮件已发送，请打开邮箱里的链接设置新密码。", true);
+      } catch (err) {
+        setStatus(authStatus, err.message || "发送重置邮件失败，请稍后重试。");
+      } finally {
+        forgotPasswordBtn.disabled = false;
+      }
+    }
+
+    async function updatePassword() {
+      const next = newPassword.value;
+      const confirm = confirmPassword.value;
+      if (!next || next.length < 6) return setStatus(authStatus, "新密码至少需要 6 位。");
+      if (next !== confirm) return setStatus(authStatus, "两次输入的新密码不一致。");
+      if (!sbClient) return setStatus(authStatus, "登录模块加载失败，请刷新页面。");
+      updatePasswordBtn.disabled = true;
+      setStatus(authStatus, "正在设置新密码...");
+      try {
+        const { data, error } = await withTimeout(
+          sbClient.auth.updateUser({ password: next }),
+          "设置新密码超时，请重新打开邮件链接再试。",
+          12000
+        );
+        if (error) return setStatus(authStatus, `设置失败：${error.message}`);
+        passwordRecoveryMode = false;
+        resetPanel.classList.remove("show");
+        newPassword.value = "";
+        confirmPassword.value = "";
+        currentUser = data.user || currentUser;
+        setStatus(authStatus, "新密码已设置成功，之后请用新密码登录。", true);
+        await updateAuthUi();
+      } catch (err) {
+        setStatus(authStatus, err.message || "设置新密码失败，请重新打开邮件链接再试。");
+      } finally {
+        updatePasswordBtn.disabled = false;
+      }
+    }
+
     async function logout() {
       if (sbClient) await withTimeout(sbClient.auth.signOut(), "退出登录超时，请刷新页面。", 8000).catch(() => {});
       currentUser = null;
       projects = [];
+      passwordRecoveryMode = false;
+      resetPanel.classList.remove("show");
       renderProjects();
       setStatus(authStatus, "已退出登录。");
       refreshToolFrame();
@@ -458,8 +536,12 @@
 
     const loginBtn = document.getElementById("loginBtn");
     const signupBtn = document.getElementById("signupBtn");
+    const forgotPasswordBtn = document.getElementById("forgotPasswordBtn");
+    const updatePasswordBtn = document.getElementById("updatePasswordBtn");
     loginBtn.addEventListener("click", login);
     signupBtn.addEventListener("click", signup);
+    forgotPasswordBtn.addEventListener("click", sendPasswordReset);
+    updatePasswordBtn.addEventListener("click", updatePassword);
     logoutBtn.addEventListener("click", logout);
     createProjectBtn.addEventListener("click", createProject);
     refreshProjectsBtn.addEventListener("click", () => loadProjects(true));
@@ -470,7 +552,15 @@
     });
     buttons.forEach(btn => btn.addEventListener("click", () => selectTool(btn.dataset.tool)));
     frame.addEventListener("load", () => setTimeout(hideEmbeddedAuth, 100));
-    if (sbClient) sbClient.auth.onAuthStateChange(() => updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。")));
+    if (sbClient) sbClient.auth.onAuthStateChange((event) => {
+      if (event === "PASSWORD_RECOVERY") {
+        passwordRecoveryMode = true;
+        resetPanel.classList.add("show");
+        setStatus(authStatus, "请输入新密码完成重置。", true);
+        return;
+      }
+      updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
+    });
 
     selectTool(location.hash.replace("#", "") || "profit", false);
     updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
