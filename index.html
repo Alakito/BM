@@ -377,18 +377,20 @@
       }
     }
 
-    async function updateAuthUi() {
+    async function updateAuthUi(refreshFrame = false) {
       if (!sbClient) {
         setStatus(authStatus, "登录模块加载失败，请刷新页面。");
         return;
       }
+      const beforeProjectId = currentProjectId;
       const { data } = await withTimeout(sbClient.auth.getSession(), "读取登录状态超时，请刷新页面。", 8000);
       currentUser = data.session?.user || null;
       logoutBtn.style.display = currentUser ? "" : "none";
       if (currentUser) {
         authEmail.value = currentUser.email || authEmail.value;
         setStatus(authStatus, `${currentUser.email || "已登录"}`, true);
-        await loadProjects(true);
+        await loadProjects(false);
+        if (refreshFrame && beforeProjectId !== currentProjectId) refreshToolFrame();
       } else {
         projects = [];
         renderProjects();
@@ -491,7 +493,7 @@
         confirmPassword.value = "";
         currentUser = data.user || currentUser;
         setStatus(authStatus, "新密码已设置成功，之后请用新密码登录。", true);
-        await updateAuthUi();
+        await updateAuthUi(true);
       } catch (err) {
         setStatus(authStatus, err.message || "设置新密码失败，请重新打开邮件链接再试。");
       } finally {
@@ -567,11 +569,11 @@
         setStatus(authStatus, "请输入新密码完成重置。", true);
         return;
       }
-      updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
+      updateAuthUi(false).catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
     });
 
     selectTool(currentToolKey, false);
-    updateAuthUi().catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
+    updateAuthUi(false).catch(err => setStatus(authStatus, err.message || "读取登录状态失败。"));
   </script>
 </body>
 </html>
