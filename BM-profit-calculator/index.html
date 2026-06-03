@@ -509,7 +509,7 @@
           <h2>场景 GMV 占比</h2>
           <div class="panel-body">
             <table id="scenarioInputs"></table>
-            <p class="note">日常/小促/大促占比会分摊到每个 SKU 的场景目标；AOV 由实际到手价和订单数自动反推，不需要手填。</p>
+            <p class="note">日常/小促/大促占比请填小数，例如 25% 填 0.25、50% 填 0.5；AOV 由实际到手价和订单数自动反推，不需要手填。</p>
           </div>
         </div>
       </div>
@@ -691,16 +691,21 @@
       const id = currentProjectId();
       return id ? `${storageKey}_${id}` : storageKey;
     }
+    function storageKeyForProject(projectId = currentProjectId()) {
+      return projectId ? `${storageKey}_${projectId}` : storageKey;
+    }
     function loadState() {
-      const raw = localStorage.getItem(scopedStorageKey()) || localStorage.getItem(storageKey);
+      const raw = localStorage.getItem(storageKeyForProject()) || localStorage.getItem(storageKey);
       if (!raw) return structuredClone(defaultState);
-      try { return { ...structuredClone(defaultState), ...JSON.parse(raw) }; }
+      try { return normalizeRateLikeFields({ ...structuredClone(defaultState), ...JSON.parse(raw) }); }
       catch { return structuredClone(defaultState); }
     }
     function saveState() {
-      localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
+      state = normalizeRateLikeFields(state);
+      const projectId = currentProjectId();
+      localStorage.setItem(storageKeyForProject(projectId), JSON.stringify(state));
       isDirty = false;
-      scheduleCloudSave();
+      scheduleCloudSave(projectId, structuredClone(state));
     }
     function markDirty() {
       isDirty = true;
@@ -724,24 +729,25 @@
       return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
     }
     function sanitizeCloudData(data) {
-      return { ...structuredClone(defaultState), ...(data || {}) };
+      return normalizeRateLikeFields({ ...structuredClone(defaultState), ...(data || {}) });
     }
-    function scheduleCloudSave() {
-      if (!currentUser || !currentProjectId() || syncingCloud) return;
+    function scheduleCloudSave(projectId = currentProjectId(), snapshot = structuredClone(state)) {
+      if (!currentUser || !projectId || syncingCloud) return;
       clearTimeout(cloudTimer);
-      cloudTimer = setTimeout(() => saveCloudData(false), 800);
+      cloudTimer = setTimeout(() => saveCloudData(false, projectId, snapshot), 800);
     }
-    async function saveCloudData(showMessage = true) {
+    async function saveCloudData(showMessage = true, projectIdOverride = "", dataOverride = null) {
       if (!sbClient) return setAuthStatus("云端未启用");
       if (!currentUser) return setAuthStatus("请先登录");
-      const projectId = currentProjectId();
+      const projectId = projectIdOverride || currentProjectId();
       if (!projectId) return setAuthStatus("请先选择项目");
+      const payload = normalizeRateLikeFields(dataOverride ? structuredClone(dataOverride) : structuredClone(state));
       const { error } = await withTimeout(sbClient
         .from("calculator_project_states")
         .upsert({
           project_id: projectId,
           user_id: currentUser.id,
-          data: state,
+          data: payload,
           updated_at: new Date().toISOString()
         }, { onConflict: "project_id" }), "保存云端超时，请稍后重试。");
       if (error) {
@@ -759,7 +765,8 @@
         setAuthStatus("请选择项目");
         return;
       }
-      const localBeforeLoad = localStorage.getItem(scopedStorageKey());
+      const localKey = storageKeyForProject(projectId);
+      const localBeforeLoad = localStorage.getItem(localKey);
       syncingCloud = true;
       setAuthStatus("读取云端...");
       const { data, error } = await withTimeout(sbClient
@@ -768,6 +775,10 @@
         .eq("project_id", projectId)
         .maybeSingle(), "读取云端超时，请稍后重试。");
       syncingCloud = false;
+      if (currentProjectId() !== projectId) {
+        setAuthStatus("项目已切换，已忽略旧项目读取结果");
+        return;
+      }
       if (isEditing || isDirty) {
         setAuthStatus("正在编辑，已暂停云端覆盖");
         return;
@@ -779,7 +790,7 @@
       }
       if (data?.data) {
         state = sanitizeCloudData(data.data);
-        localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
+        localStorage.setItem(localKey, JSON.stringify(state));
         setAuthStatus("已加载当前项目数据");
       } else {
         const { data: legacyData } = await withTimeout(sbClient
@@ -789,15 +800,15 @@
           .maybeSingle(), "读取旧账号数据超时，请稍后重试。");
         if (legacyData?.data) {
           state = sanitizeCloudData(legacyData.data);
-          localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
-          await saveCloudData(false);
+          localStorage.setItem(localKey, JSON.stringify(state));
+          await saveCloudData(false, projectId, state);
           setAuthStatus("已迁移旧账号数据到当前项目");
-        } else if (localStorage.getItem(scopedStorageKey()) || localBeforeLoad) {
+        } else if (localStorage.getItem(localKey) || localBeforeLoad) {
           state = loadState();
           setAuthStatus("已加载本机项目数据");
         } else {
           state = structuredClone(defaultState);
-          localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
+          localStorage.setItem(localKey, JSON.stringify(state));
           setAuthStatus("当前项目暂无成本数据");
         }
       }
@@ -835,12 +846,48 @@
     function pct(v) { return (num(v) * 100).toFixed(2) + "%"; }
     function money(v) { return money2.format(num(v)); }
     function ratio(v) { return Number.isFinite(num(v)) ? num(v).toFixed(2) : "不可达"; }
+    function isRatePath(path = "") {
+      return /Rate|Share|scenarioShares|salesShare|orderShare/.test(path);
+    }
+    function normalizeRateNumber(value) {
+      const n = Number(value);
+      if (!Number.isFinite(n)) return value;
+      return Math.abs(n) > 1 ? n / 100 : n;
+    }
+    function normalizeRateLikeFields(data) {
+      const next = data || structuredClone(defaultState);
+      const p = next.project || {};
+      [
+        "returnRate", "nonResaleReturnRate", "agencyRate", "logisticsRate", "lossRate",
+        "platformCommissionRate", "transactionRate", "commerceGrowthRate", "bcdFlashRate",
+        "resourcePackRate", "sfpRate", "voucherXtraRate", "creatorCommissionRate"
+      ].forEach(k => { if (p[k] !== "" && p[k] != null) p[k] = normalizeRateNumber(p[k]); });
+      Object.keys(next.scenarioShares || {}).forEach(k => {
+        next.scenarioShares[k] = normalizeRateNumber(next.scenarioShares[k]);
+      });
+      (next.skus || []).forEach(s => {
+        if (s.salesShare !== "" && s.salesShare != null) s.salesShare = normalizeRateNumber(s.salesShare);
+        if (s.creatorCommissionRate !== "" && s.creatorCommissionRate != null) s.creatorCommissionRate = normalizeRateNumber(s.creatorCommissionRate);
+      });
+      (next.cofundRules || []).forEach(r => {
+        ["discountRate", "platformShare", "merchantShare"].forEach(k => {
+          if (r[k] !== "" && r[k] != null) r[k] = normalizeRateNumber(r[k]);
+        });
+      });
+      (next.cartDeals || []).forEach(d => {
+        if (d.orderShare !== "" && d.orderShare != null) d.orderShare = normalizeRateNumber(d.orderShare);
+      });
+      return next;
+    }
     function input(value, path, type = "number", step = "0.01") {
       const escaped = String(value ?? "").replaceAll('"', "&quot;");
       if (type === "checkbox") {
         return `<input type="checkbox" data-path="${path}" ${value ? "checked" : ""}>`;
       }
-      return `<input type="${type}" step="${step}" data-path="${path}" value="${escaped}">`;
+      const rateAttrs = type === "number" && isRatePath(path)
+        ? ` placeholder="如25%填0.25" title="率/占比请填小数，例如25%填0.25、10%填0.1"`
+        : "";
+      return `<input type="${type}" step="${step}" data-path="${path}" value="${escaped}"${rateAttrs}>`;
     }
     function select(value, path, options) {
       return `<select data-path="${path}">${options.map(o => `<option value="${o}" ${o === value ? "selected" : ""}>${o}</option>`).join("")}</select>`;
@@ -1224,25 +1271,25 @@
       const fields = [
         ["项目名称", "project.name", "text"], ["测算周期", "project.period", "text"],
         ["项目目标GMV/用户实付GMV", "project.gmv"], ["目标项目ROI", "project.targetROI"],
-        ["退货率", "project.returnRate"], ["后台广告ROAS对应广告费", "project.adSpend"],
+        ["退货率（小数，如25%=0.25）", "project.returnRate"], ["后台广告ROAS对应广告费", "project.adSpend"],
         ["达人采买费用（含内容）", "project.creatorBuying"], ["样品成本", "project.sampleCost"],
-        ["其他费用", "project.otherCost"], ["代运营服务费率", "project.agencyRate"],
-        ["物流费率", "project.logisticsRate"], ["货损率", "project.lossRate"],
-        ["平台基础设施费/单", "project.platformInfraPerOrder"], ["平台类目佣金率", "project.platformCommissionRate"],
-        ["交易手续费率", "project.transactionRate"], ["商业增长费率", "project.commerceGrowthRate"],
-        ["BCD/Flash佣金率", "project.bcdFlashRate"], ["活动资源包费率", "project.resourcePackRate"],
-        ["SFP/运费项目费率", "project.sfpRate"], ["Voucher Xtra费率", "project.voucherXtraRate"],
-        ["默认达人佣金率", "project.creatorCommissionRate"]
+        ["其他费用", "project.otherCost"], ["代运营服务费率（小数）", "project.agencyRate"],
+        ["物流费率（小数）", "project.logisticsRate"], ["货损率（小数）", "project.lossRate"],
+        ["平台基础设施费/单", "project.platformInfraPerOrder"], ["平台类目佣金率（小数）", "project.platformCommissionRate"],
+        ["交易手续费率（小数）", "project.transactionRate"], ["商业增长费率（小数）", "project.commerceGrowthRate"],
+        ["BCD/Flash佣金率（小数）", "project.bcdFlashRate"], ["活动资源包费率（小数）", "project.resourcePackRate"],
+        ["SFP/运费项目费率（小数）", "project.sfpRate"], ["Voucher Xtra费率（小数）", "project.voucherXtraRate"],
+        ["默认达人佣金率（小数）", "project.creatorCommissionRate"]
       ];
       document.getElementById("projectInputs").innerHTML = `<tr><th>字段</th><th>值</th></tr>` +
         fields.map(([label, path, type = "number"]) => `<tr><td>${label}</td><td class="input-cell">${input(pathGet(path), path, type)}</td></tr>`).join("");
-      document.getElementById("scenarioInputs").innerHTML = `<tr><th>场景</th><th>GMV占比</th></tr>` +
+      document.getElementById("scenarioInputs").innerHTML = `<tr><th>场景</th><th>GMV占比（小数，如25%=0.25）</th></tr>` +
         scenarios.map(sc => `<tr><td>${sc}</td><td class="input-cell">${input(state.scenarioShares[sc], `scenarioShares.${sc}`)}</td></tr>`).join("");
     }
     function renderSku() {
       document.getElementById("skuTable").innerHTML = `<tr>
         <th style="width:95px">SKU</th><th style="width:160px">产品名</th><th class="center" style="width:70px">启用</th>
-        <th class="num">划线价</th><th class="num">到仓成本/件</th><th class="num">赠品成本/单</th><th class="num">件单比</th><th class="num">SKU销售占比</th>
+        <th class="num">划线价</th><th class="num">到仓成本/件</th><th class="num">赠品成本/单</th><th class="num">件单比</th><th class="num">SKU销售占比（小数）</th>
         <th class="center">参与共资</th><th class="num">日常券</th><th class="num">小促券</th><th class="num">大促券</th><th class="center">操作</th></tr>` +
         state.skus.map((s, i) => `<tr>
           <td class="input-cell">${input(s.sku, `skus.${i}.sku`, "text")}</td>
@@ -1263,7 +1310,7 @@
     function renderRules() {
       document.getElementById("storeCouponTable").innerHTML = `<tr><th>项目</th><th>金额</th><th>说明</th></tr>
         <tr><td>新人优惠券</td><td class="input-cell">${input(state.storeCoupon.newUser, "storeCoupon.newUser")}</td><td>与场景店铺券取最大值</td></tr>`;
-      document.getElementById("cofundTable").innerHTML = `<tr><th>券类型</th><th>场景</th><th class="num">折扣率</th><th class="num">门槛</th><th class="num">封顶</th><th class="num">平台承担</th><th class="num">商家承担</th><th>操作</th></tr>` +
+      document.getElementById("cofundTable").innerHTML = `<tr><th>券类型</th><th>场景</th><th class="num">折扣率（小数）</th><th class="num">门槛</th><th class="num">封顶</th><th class="num">平台承担（小数）</th><th class="num">商家承担（小数）</th><th>操作</th></tr>` +
         state.cofundRules.map((r, i) => `<tr>
           <td class="input-cell">${input(r.name, `cofundRules.${i}.name`, "text")}</td>
           <td class="input-cell">${select(r.scene, `cofundRules.${i}.scene`, scenarios)}</td>
@@ -1295,7 +1342,7 @@
     function renderCartDeals(rows) {
       document.getElementById("cartDealInputTable").innerHTML = `<tr>
         <th>订单场景</th><th class="center">启用</th><th>场景</th><th>SKU组合</th>
-        <th class="num">满减门槛</th><th class="num">满减金额</th><th class="num">赠品成本/单</th><th class="num">订单GMV占比</th><th class="center">参与共资</th><th>操作</th></tr>` +
+        <th class="num">满减门槛</th><th class="num">满减金额</th><th class="num">赠品成本/单</th><th class="num">订单GMV占比（小数）</th><th class="center">参与共资</th><th>操作</th></tr>` +
         (state.cartDeals || []).map((d, i) => `<tr>
           <td class="input-cell">${input(d.name, `cartDeals.${i}.name`, "text")}</td>
           <td class="center input-cell">${input(d.enabled, `cartDeals.${i}.enabled`, "checkbox")}</td>
