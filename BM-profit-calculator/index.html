@@ -745,6 +745,7 @@
         setAuthStatus("请选择项目");
         return;
       }
+      const localBeforeLoad = localStorage.getItem(scopedStorageKey());
       syncingCloud = true;
       setAuthStatus("读取云端...");
       const { data, error } = await withTimeout(sbClient
@@ -773,6 +774,9 @@
           localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
           await saveCloudData(false);
           setAuthStatus("已迁移旧账号数据到当前项目");
+        } else if (localStorage.getItem(scopedStorageKey()) || localBeforeLoad) {
+          state = loadState();
+          setAuthStatus("已加载本机项目数据");
         } else {
           state = structuredClone(defaultState);
           localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
@@ -834,6 +838,17 @@
       obj[parts.at(-1)] = isCheckbox ? value : (value === "" ? "" : (isNaN(Number(value)) ? value : Number(value)));
       saveState();
       render();
+    }
+    function writePath(path, value, isCheckbox = false) {
+      const parts = path.split(".");
+      let obj = state;
+      for (let i = 0; i < parts.length - 1; i++) {
+        const key = parts[i];
+        if (!obj[key] || typeof obj[key] !== "object") obj[key] = {};
+        obj = obj[key];
+      }
+      obj[parts.at(-1)] = isCheckbox ? value : (value === "" ? "" : (isNaN(Number(value)) ? value : Number(value)));
+      saveState();
     }
     function normalizeShares() {
       const enabled = state.skus.filter(s => s.enabled);
@@ -1361,7 +1376,12 @@
     }
     function bindInputs() {
       document.querySelectorAll("[data-path]").forEach(el => {
-        el.onchange = e => setPath(e.target.dataset.path, e.target.type === "checkbox" ? e.target.checked : e.target.value, e.target.type === "checkbox");
+        if (el.type === "checkbox" || el.tagName === "SELECT") {
+          el.onchange = e => setPath(e.target.dataset.path, e.target.type === "checkbox" ? e.target.checked : e.target.value, e.target.type === "checkbox");
+          return;
+        }
+        el.oninput = e => writePath(e.target.dataset.path, e.target.value, false);
+        el.onchange = e => setPath(e.target.dataset.path, e.target.value, false);
       });
       document.querySelectorAll("[data-remove-sku]").forEach(btn => btn.onclick = () => { state.skus.splice(Number(btn.dataset.removeSku), 1); saveState(); render(); });
       document.querySelectorAll("[data-remove-cofund]").forEach(btn => btn.onclick = () => { state.cofundRules.splice(Number(btn.dataset.removeCofund), 1); saveState(); render(); });
