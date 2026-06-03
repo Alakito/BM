@@ -453,6 +453,7 @@
         <label class="file-label" for="importJson">导入参数</label>
         <input id="importJson" type="file" accept="application/json">
         <button id="exportCsv">导出明细CSV</button>
+        <button class="primary" id="editSaveBtn">编辑数据</button>
         <button class="danger" id="resetData">恢复空白模板</button>
         <div class="auth-box">
           <input id="authEmail" type="email" placeholder="邮箱">
@@ -635,6 +636,8 @@
     let currentUser = null;
     let cloudTimer = null;
     let syncingCloud = false;
+    let isEditing = false;
+    let isDirty = false;
 
     const defaultState = {
       project: {
@@ -696,7 +699,18 @@
     }
     function saveState() {
       localStorage.setItem(scopedStorageKey(), JSON.stringify(state));
+      isDirty = false;
       scheduleCloudSave();
+    }
+    function markDirty() {
+      isDirty = true;
+      updateEditUi();
+    }
+    function updateEditUi() {
+      const btn = document.getElementById("editSaveBtn");
+      if (!btn) return;
+      btn.textContent = isEditing ? (isDirty ? "保存数据*" : "保存数据") : "编辑数据";
+      btn.classList.toggle("danger", isEditing && isDirty);
     }
     function setAuthStatus(text) {
       const el = document.getElementById("authStatus");
@@ -754,6 +768,10 @@
         .eq("project_id", projectId)
         .maybeSingle(), "读取云端超时，请稍后重试。");
       syncingCloud = false;
+      if (isEditing || isDirty) {
+        setAuthStatus("正在编辑，已暂停云端覆盖");
+        return;
+      }
       if (error) {
         setAuthStatus("读取失败");
         alert(error.message);
@@ -828,6 +846,7 @@
       return `<select data-path="${path}">${options.map(o => `<option value="${o}" ${o === value ? "selected" : ""}>${o}</option>`).join("")}</select>`;
     }
     function setPath(path, value, isCheckbox = false) {
+      if (!isEditing) return;
       const parts = path.split(".");
       let obj = state;
       for (let i = 0; i < parts.length - 1; i++) {
@@ -836,10 +855,11 @@
         obj = obj[key];
       }
       obj[parts.at(-1)] = isCheckbox ? value : (value === "" ? "" : (isNaN(Number(value)) ? value : Number(value)));
-      saveState();
+      markDirty();
       render();
     }
     function writePath(path, value, isCheckbox = false) {
+      if (!isEditing) return;
       const parts = path.split(".");
       let obj = state;
       for (let i = 0; i < parts.length - 1; i++) {
@@ -848,7 +868,7 @@
         obj = obj[key];
       }
       obj[parts.at(-1)] = isCheckbox ? value : (value === "" ? "" : (isNaN(Number(value)) ? value : Number(value)));
-      saveState();
+      markDirty();
     }
     function normalizeShares() {
       const enabled = state.skus.filter(s => s.enabled);
@@ -1376,6 +1396,7 @@
     }
     function bindInputs() {
       document.querySelectorAll("[data-path]").forEach(el => {
+        el.disabled = !isEditing;
         if (el.type === "checkbox" || el.tagName === "SELECT") {
           el.onchange = e => setPath(e.target.dataset.path, e.target.type === "checkbox" ? e.target.checked : e.target.value, e.target.type === "checkbox");
           return;
@@ -1383,9 +1404,14 @@
         el.oninput = e => writePath(e.target.dataset.path, e.target.value, false);
         el.onchange = e => setPath(e.target.dataset.path, e.target.value, false);
       });
-      document.querySelectorAll("[data-remove-sku]").forEach(btn => btn.onclick = () => { state.skus.splice(Number(btn.dataset.removeSku), 1); saveState(); render(); });
-      document.querySelectorAll("[data-remove-cofund]").forEach(btn => btn.onclick = () => { state.cofundRules.splice(Number(btn.dataset.removeCofund), 1); saveState(); render(); });
-      document.querySelectorAll("[data-remove-cart]").forEach(btn => btn.onclick = () => { state.cartDeals.splice(Number(btn.dataset.removeCart), 1); saveState(); render(); });
+      document.querySelectorAll("[data-remove-sku]").forEach(btn => { btn.disabled = !isEditing; btn.onclick = () => { if (!isEditing) return; state.skus.splice(Number(btn.dataset.removeSku), 1); markDirty(); render(); }; });
+      document.querySelectorAll("[data-remove-cofund]").forEach(btn => { btn.disabled = !isEditing; btn.onclick = () => { if (!isEditing) return; state.cofundRules.splice(Number(btn.dataset.removeCofund), 1); markDirty(); render(); }; });
+      document.querySelectorAll("[data-remove-cart]").forEach(btn => { btn.disabled = !isEditing; btn.onclick = () => { if (!isEditing) return; state.cartDeals.splice(Number(btn.dataset.removeCart), 1); markDirty(); render(); }; });
+      ["addSku","addCartDeal","addCofund","resetData"].forEach(id => {
+        const btn = document.getElementById(id);
+        if (btn) btn.disabled = !isEditing;
+      });
+      updateEditUi();
     }
     document.querySelectorAll(".tab").forEach(btn => {
       btn.onclick = () => {
@@ -1395,18 +1421,33 @@
         document.getElementById(btn.dataset.tab).classList.add("active");
       };
     });
+    document.getElementById("editSaveBtn").onclick = () => {
+      if (!isEditing) {
+        isEditing = true;
+        updateEditUi();
+        render();
+        return;
+      }
+      saveState();
+      isEditing = false;
+      updateEditUi();
+      render();
+    };
     document.getElementById("addSku").onclick = () => {
+      if (!isEditing) return;
       state.skus.push({ sku: "SKU" + String(state.skus.length + 1).padStart(3, "0"), name: "", enabled: true, listPrice: 0, cost: 0, giftCost: 0, unitPerOrder: 1, salesShare: 0, cofund: false, coupons: { "日常": 0, "小促": 0, "大促": 0 } });
-      saveState(); render();
+      markDirty(); render();
     };
     document.getElementById("addCartDeal").onclick = () => {
+      if (!isEditing) return;
       if (!state.cartDeals) state.cartDeals = [];
       state.cartDeals.push({ name: "", enabled: true, scene: "大促", skuMix: "", threshold: 0, discount: 0, giftCost: 0, orderShare: 0, cofund: false });
-      saveState(); render();
+      markDirty(); render();
     };
     document.getElementById("addCofund").onclick = () => {
+      if (!isEditing) return;
       state.cofundRules.push({ name: "", scene: "大促", discountRate: 0, threshold: 0, cap: 0, platformShare: 0, merchantShare: 0 });
-      saveState(); render();
+      markDirty(); render();
     };
     document.getElementById("resetData").onclick = () => {
       if (confirm("确认恢复空白模板？当前输入会被覆盖。")) { state = structuredClone(defaultState); saveState(); render(); }
@@ -1471,7 +1512,10 @@
       updateAuthUi();
       render();
     };
-    document.getElementById("cloudSaveBtn").onclick = () => saveCloudData(true);
+    document.getElementById("cloudSaveBtn").onclick = () => {
+      if (isDirty) saveState();
+      saveCloudData(true);
+    };
     document.getElementById("exportCsv").onclick = () => {
       const rows = computeDetails();
       const headers = ["SKU","产品名","场景","场景目标GMV","匹配共资券","用户实付价/件","结算收入/件","订单数","结算收入","平台扣费","达人佣金","货品成本","广告分摊","达人采买分摊","场景净利润"];
