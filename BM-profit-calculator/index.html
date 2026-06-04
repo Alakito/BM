@@ -471,6 +471,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="dashboard">项目总览</button>
       <button class="tab" data-tab="inputs">项目输入</button>
+      <button class="tab" data-tab="targetPlan">目标拆解</button>
       <button class="tab" data-tab="sku">SKU 数据</button>
       <button class="tab" data-tab="rules">券规则</button>
       <button class="tab" data-tab="details">场景明细</button>
@@ -510,6 +511,64 @@
           <div class="panel-body">
             <table id="scenarioInputs"></table>
             <p class="note">日常/小促/大促占比请填小数，例如 25% 填 0.25、50% 填 0.5；AOV 由实际到手价和订单数自动反推，不需要手填。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="targetPlan" class="view">
+      <div class="kpis" id="targetKpis"></div>
+      <div class="grid two">
+        <div class="panel">
+          <h2>目标总控</h2>
+          <div class="panel-body">
+            <table id="targetOverviewInputs"></table>
+            <p class="note">目标拆解独立保存，不会改动成本测算的项目输入；需要联动时，可把目标 GMV、预算和 AOV 填回项目输入。</p>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>月度漏斗参数</h2>
+          <div class="panel-body">
+            <table id="targetMonthInputs"></table>
+          </div>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:12px">
+        <div class="panel">
+          <h2>渠道转化与 GMV 占比</h2>
+          <div class="panel-body">
+            <table id="targetChannelInputs"></table>
+            <p class="note">渠道 CTR / 点击成交率留空时，会默认沿用对应月份的整体漏斗目标；占比和转化率均填小数，例如 25% 填 0.25。</p>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>单品权重</h2>
+          <div class="panel-body">
+            <table id="targetProductInputs"></table>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h2>月度目标倒推</h2>
+        <div class="panel-body">
+          <div class="scroll">
+            <table class="sticky" id="targetMonthlyResult"></table>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h2>渠道曝光倒推</h2>
+        <div class="panel-body">
+          <div class="scroll">
+            <table class="sticky" id="targetChannelResult"></table>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h2>单品目标拆解</h2>
+        <div class="panel-body">
+          <div class="scroll">
+            <table class="sticky" id="targetProductResult"></table>
           </div>
         </div>
       </div>
@@ -678,6 +737,28 @@
         { name: "25% off cap750", scene: "大促", discountRate: 0.25, threshold: 399, cap: 750, platformShare: 0.40, merchantShare: 0.60 },
         { name: "35% off", scene: "大促", discountRate: 0.35, threshold: 100, cap: 1000, platformShare: 0.60, merchantShare: 0.40 }
       ],
+      targetPlan: {
+        name: "Q3目标拆解",
+        totalGmv: 4000000,
+        note: "GMV=AOV×订单；订单=曝光×CTR×点击成交率；广告预算=GMV÷ROI",
+        months: [
+          { name: "7月", stage: "正式运营首月：打开市场与口碑", gmv: 600000, aov: 220, ctrRate: 0.05, clickOrderRate: 0.03, roi: 1.5 },
+          { name: "8月", stage: "增长放大：核心IP与达人素材拉升", gmv: 1400000, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2 },
+          { name: "9月", stage: "规模冲刺：完成季度400万目标", gmv: 2000000, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2.2222222222 }
+        ],
+        channels: [
+          { name: "短视频", role: "达人/短视频素材跑量主渠道", shares: [0.80, 0.75, 0.65], ctrRate: "", clickOrderRate: "" },
+          { name: "直播", role: "中后期承接与活动放大", shares: [0, 0, 0.15], ctrRate: "", clickOrderRate: "" },
+          { name: "商城/商品卡", role: "搜索、推荐流与自然转化承接", shares: [0.20, 0.25, 0.20], ctrRate: "", clickOrderRate: "" }
+        ],
+        products: [
+          { name: "Blooms", role: "核心认知款", weights: [0.25, 0.30, 0.30] },
+          { name: "GUARDIAN ANGEL", role: "稳定承接款", weights: [0.20, 0.20, 0.20] },
+          { name: "Miraculous/灵光", role: "IP/记忆点款", weights: [0.15, 0.10, 0.10] },
+          { name: "AURUM", role: "核心拉动款", weights: [0.25, 0.30, 0.30] },
+          { name: "Blue", role: "补充款", weights: [0.15, 0.10, 0.10] }
+        ]
+      },
       manual: { adSpend: "", creatorBuying: "", fixedOther: "", settlementIncome: "", aov: "", roas: "" }
     };
 
@@ -847,7 +928,7 @@
     function money(v) { return money2.format(num(v)); }
     function ratio(v) { return Number.isFinite(num(v)) ? num(v).toFixed(2) : "不可达"; }
     function isRatePath(path = "") {
-      return /Rate|Share|scenarioShares|salesShare|orderShare/.test(path);
+      return /Rate|Share|share|shares|weight|Weight|scenarioShares|salesShare|orderShare/.test(path);
     }
     function normalizeRateNumber(value) {
       const n = Number(value);
@@ -876,6 +957,24 @@
       });
       (next.cartDeals || []).forEach(d => {
         if (d.orderShare !== "" && d.orderShare != null) d.orderShare = normalizeRateNumber(d.orderShare);
+      });
+      (next.targetPlan?.months || []).forEach(m => {
+        ["ctrRate", "clickOrderRate"].forEach(k => {
+          if (m[k] !== "" && m[k] != null) m[k] = normalizeRateNumber(m[k]);
+        });
+      });
+      (next.targetPlan?.channels || []).forEach(ch => {
+        ["ctrRate", "clickOrderRate"].forEach(k => {
+          if (ch[k] !== "" && ch[k] != null) ch[k] = normalizeRateNumber(ch[k]);
+        });
+        (ch.shares || []).forEach((v, i) => {
+          if (v !== "" && v != null) ch.shares[i] = normalizeRateNumber(v);
+        });
+      });
+      (next.targetPlan?.products || []).forEach(p => {
+        (p.weights || []).forEach((v, i) => {
+          if (v !== "" && v != null) p.weights[i] = normalizeRateNumber(v);
+        });
       });
       return next;
     }
@@ -1215,6 +1314,7 @@
       renderCartDeals(computeCartDeals());
       renderUnitSpace(computeUnitSpaces());
       renderOptimization(summary);
+      renderTargetPlan();
       bindInputs();
     }
     function renderKpis(s) {
@@ -1431,6 +1531,112 @@
           return `<tr><td>${name}</td><td class="num">${formatMixed(current)}</td><td class="input-cell">${input(v, path)}</td><td class="num">${formatMixed(delta)}</td><td>${note}</td></tr>`;
         }).join("") +
         `<tr class="calc-cell"><td>组合调控结果</td><td colspan="2">调后结算收入 ${money(sim.income)} / 调后总成本 ${money(sim.totalCost)}</td><td class="num ${sim.profit >= 0 ? "good" : "bad"}">${money(sim.profit)}</td><td>净利润变化 ${money(sim.profitDelta)}，ROI ${ratio(sim.roi)}，<span class="status ${sim.status === "亏损" ? "bad" : ""}">${sim.status}</span></td></tr>`;
+    }
+    function getTargetPlan() {
+      if (!state.targetPlan) state.targetPlan = structuredClone(defaultState.targetPlan);
+      if (!Array.isArray(state.targetPlan.months) || !state.targetPlan.months.length) state.targetPlan.months = structuredClone(defaultState.targetPlan.months);
+      if (!Array.isArray(state.targetPlan.channels) || !state.targetPlan.channels.length) state.targetPlan.channels = structuredClone(defaultState.targetPlan.channels);
+      if (!Array.isArray(state.targetPlan.products) || !state.targetPlan.products.length) state.targetPlan.products = structuredClone(defaultState.targetPlan.products);
+      return state.targetPlan;
+    }
+    function computeTargetPlan() {
+      const plan = getTargetPlan();
+      const months = plan.months.map((m, mi) => {
+        const gmv = num(m.gmv);
+        const aov = num(m.aov);
+        const ctr = num(m.ctrRate);
+        const clickOrder = num(m.clickOrderRate);
+        const roi = num(m.roi);
+        const orders = aov > 0 ? gmv / aov : 0;
+        const clicks = clickOrder > 0 ? orders / clickOrder : 0;
+        const exposure = ctr > 0 ? clicks / ctr : 0;
+        const budget = roi > 0 ? gmv / roi : 0;
+        return { ...m, monthIndex: mi, gmv, aov, ctr, clickOrder, roi, orders, clicks, exposure, budget };
+      });
+      const monthTotals = months.reduce((a, m) => {
+        a.gmv += m.gmv; a.orders += m.orders; a.clicks += m.clicks; a.exposure += m.exposure; a.budget += m.budget;
+        return a;
+      }, { gmv: 0, orders: 0, clicks: 0, exposure: 0, budget: 0 });
+      monthTotals.roi = monthTotals.budget > 0 ? monthTotals.gmv / monthTotals.budget : 0;
+      monthTotals.aov = monthTotals.orders > 0 ? monthTotals.gmv / monthTotals.orders : 0;
+      const channelRows = [];
+      plan.channels.forEach((ch, ci) => {
+        months.forEach((m, mi) => {
+          const share = num(ch.shares?.[mi]);
+          const gmv = m.gmv * share;
+          const ctr = ch.ctrRate === "" || ch.ctrRate == null ? m.ctr : num(ch.ctrRate);
+          const clickOrder = ch.clickOrderRate === "" || ch.clickOrderRate == null ? m.clickOrder : num(ch.clickOrderRate);
+          const orders = m.aov > 0 ? gmv / m.aov : 0;
+          const clicks = clickOrder > 0 ? orders / clickOrder : 0;
+          const exposure = ctr > 0 ? clicks / ctr : 0;
+          const budget = m.roi > 0 ? gmv / m.roi : 0;
+          channelRows.push({ channelIndex: ci, monthIndex: mi, month: m.name, channel: ch.name, role: ch.role, share, gmv, aov: m.aov, ctr, clickOrder, orders, clicks, exposure, budget });
+        });
+      });
+      const productRows = [];
+      plan.products.forEach((p, pi) => {
+        months.forEach((m, mi) => {
+          const weight = num(p.weights?.[mi]);
+          const gmv = m.gmv * weight;
+          const orders = m.aov > 0 ? gmv / m.aov : 0;
+          productRows.push({ productIndex: pi, monthIndex: mi, month: m.name, product: p.name, role: p.role, weight, gmv, orders });
+        });
+      });
+      return { plan, months, monthTotals, channelRows, productRows };
+    }
+    function renderTargetPlan() {
+      const t = computeTargetPlan();
+      document.getElementById("targetKpis").innerHTML = [
+        ["Q3目标GMV", money(t.monthTotals.gmv), `${t.months.length} 个月合计`],
+        ["Q3订单目标", money0.format(t.monthTotals.orders), `综合AOV ${money(t.monthTotals.aov)}`],
+        ["Q3曝光目标", money0.format(t.monthTotals.exposure), `点击 ${money0.format(t.monthTotals.clicks)}`],
+        ["Q3广告预算", money(t.monthTotals.budget), `整体ROI ${ratio(t.monthTotals.roi)}`],
+        ["成本测算GMV", money(computeSummary().gmv), "用于和利润模型对照"]
+      ].map(([l, v, sub]) => `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${sub}</div></div>`).join("");
+
+      document.getElementById("targetOverviewInputs").innerHTML = `<tr><th>字段</th><th>值</th></tr>
+        <tr><td>方案名称</td><td class="input-cell">${input(t.plan.name, "targetPlan.name", "text")}</td></tr>
+        <tr><td>Q3目标GMV</td><td class="calc-cell num">${money(t.monthTotals.gmv)}</td></tr>
+        <tr><td>Q3广告预算</td><td class="calc-cell num">${money(t.monthTotals.budget)}</td></tr>
+        <tr><td>Q3整体ROI</td><td class="calc-cell num">${ratio(t.monthTotals.roi)}</td></tr>
+        <tr><td>测算口径说明</td><td class="input-cell">${input(t.plan.note, "targetPlan.note", "text")}</td></tr>`;
+
+      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV目标</th><th class="num">AOV</th><th class="num">CTR</th><th class="num">点击成交率</th><th class="num">ROI</th></tr>` +
+        t.plan.months.map((m, i) => `<tr>
+          <td class="input-cell">${input(m.name, `targetPlan.months.${i}.name`, "text")}</td>
+          <td class="input-cell">${input(m.stage, `targetPlan.months.${i}.stage`, "text")}</td>
+          <td class="input-cell">${input(m.gmv, `targetPlan.months.${i}.gmv`)}</td>
+          <td class="input-cell">${input(m.aov, `targetPlan.months.${i}.aov`)}</td>
+          <td class="input-cell">${input(m.ctrRate, `targetPlan.months.${i}.ctrRate`)}</td>
+          <td class="input-cell">${input(m.clickOrderRate, `targetPlan.months.${i}.clickOrderRate`)}</td>
+          <td class="input-cell">${input(m.roi, `targetPlan.months.${i}.roi`)}</td>
+        </tr>`).join("");
+
+      document.getElementById("targetChannelInputs").innerHTML = `<tr><th>渠道</th><th>角色定位</th>${t.months.map(m => `<th class="num">${m.name} GMV占比</th>`).join("")}<th class="num">渠道CTR</th><th class="num">渠道点击成交率</th></tr>` +
+        t.plan.channels.map((ch, i) => `<tr>
+          <td class="input-cell">${input(ch.name, `targetPlan.channels.${i}.name`, "text")}</td>
+          <td class="input-cell">${input(ch.role, `targetPlan.channels.${i}.role`, "text")}</td>
+          ${t.months.map((m, mi) => `<td class="input-cell">${input(ch.shares?.[mi] ?? 0, `targetPlan.channels.${i}.shares.${mi}`)}</td>`).join("")}
+          <td class="input-cell">${input(ch.ctrRate ?? "", `targetPlan.channels.${i}.ctrRate`)}</td>
+          <td class="input-cell">${input(ch.clickOrderRate ?? "", `targetPlan.channels.${i}.clickOrderRate`)}</td>
+        </tr>`).join("");
+
+      document.getElementById("targetProductInputs").innerHTML = `<tr><th>单品</th><th>角色定位</th>${t.months.map(m => `<th class="num">${m.name}权重</th>`).join("")}</tr>` +
+        t.plan.products.map((p, i) => `<tr>
+          <td class="input-cell">${input(p.name, `targetPlan.products.${i}.name`, "text")}</td>
+          <td class="input-cell">${input(p.role, `targetPlan.products.${i}.role`, "text")}</td>
+          ${t.months.map((m, mi) => `<td class="input-cell">${input(p.weights?.[mi] ?? 0, `targetPlan.products.${i}.weights.${mi}`)}</td>`).join("")}
+        </tr>`).join("");
+
+      document.getElementById("targetMonthlyResult").innerHTML = `<tr><th>月份</th><th>阶段</th><th class="num">GMV目标</th><th class="num">AOV</th><th class="num">订单目标</th><th class="num">CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">ROI</th><th class="num">广告预算</th></tr>` +
+        t.months.map(m => `<tr><td>${m.name}</td><td>${m.stage}</td><td class="num">${money(m.gmv)}</td><td class="num">${money(m.aov)}</td><td class="num">${money0.format(m.orders)}</td><td class="num">${pct(m.ctr)}</td><td class="num">${pct(m.clickOrder)}</td><td class="num">${money0.format(m.clicks)}</td><td class="num">${money0.format(m.exposure)}</td><td class="num">${ratio(m.roi)}</td><td class="num">${money(m.budget)}</td></tr>`).join("") +
+        `<tr class="calc-cell"><td colspan="2">Q3合计</td><td class="num">${money(t.monthTotals.gmv)}</td><td class="num">${money(t.monthTotals.aov)}</td><td class="num">${money0.format(t.monthTotals.orders)}</td><td></td><td></td><td class="num">${money0.format(t.monthTotals.clicks)}</td><td class="num">${money0.format(t.monthTotals.exposure)}</td><td class="num">${ratio(t.monthTotals.roi)}</td><td class="num">${money(t.monthTotals.budget)}</td></tr>`;
+
+      document.getElementById("targetChannelResult").innerHTML = `<tr><th>月份</th><th>渠道</th><th>角色</th><th class="num">GMV占比</th><th class="num">GMV目标</th><th class="num">订单目标</th><th class="num">CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">预算参考</th></tr>` +
+        t.channelRows.map(r => `<tr><td>${r.month}</td><td>${r.channel}</td><td>${r.role}</td><td class="num">${pct(r.share)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money0.format(r.orders)}</td><td class="num">${pct(r.ctr)}</td><td class="num">${pct(r.clickOrder)}</td><td class="num">${money0.format(r.clicks)}</td><td class="num">${money0.format(r.exposure)}</td><td class="num">${money(r.budget)}</td></tr>`).join("");
+
+      document.getElementById("targetProductResult").innerHTML = `<tr><th>月份</th><th>单品</th><th>角色</th><th class="num">GMV权重</th><th class="num">GMV目标</th><th class="num">订单/销量目标</th></tr>` +
+        t.productRows.map(r => `<tr><td>${r.month}</td><td>${r.product}</td><td>${r.role}</td><td class="num">${pct(r.weight)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money0.format(r.orders)}</td></tr>`).join("");
     }
     function formatMixed(v) {
       if (v === null || v === undefined) return "不可达";
