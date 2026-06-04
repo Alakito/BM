@@ -225,6 +225,8 @@
     const BM_PROJECT_KEY = "bm_current_project_v1";
     const BI_PROJECT_KEY = "product_card_bi_current_project_v1";
     const CALC_PROJECT_KEY = "profit_calculator_current_project_v1";
+    const BM_PROJECT_OWNER_KEY = "bm_current_project_owner_v1";
+    const BI_PROJECT_OWNER_KEY = "product_card_bi_project_owner_v1";
 
     const tools = {
       profit: { url: "BM-profit-calculator/" },
@@ -271,14 +273,18 @@
 
     function syncProjectKeys(projectId) {
       currentProjectId = projectId || "";
-      if (currentProjectId) {
+      if (currentProjectId && currentUser?.id) {
         localStorage.setItem(BM_PROJECT_KEY, currentProjectId);
         localStorage.setItem(BI_PROJECT_KEY, currentProjectId);
         localStorage.setItem(CALC_PROJECT_KEY, currentProjectId);
+        localStorage.setItem(BM_PROJECT_OWNER_KEY, currentUser.id);
+        localStorage.setItem(BI_PROJECT_OWNER_KEY, currentUser.id);
       } else {
         localStorage.removeItem(BM_PROJECT_KEY);
         localStorage.removeItem(BI_PROJECT_KEY);
         localStorage.removeItem(CALC_PROJECT_KEY);
+        localStorage.removeItem(BM_PROJECT_OWNER_KEY);
+        localStorage.removeItem(BI_PROJECT_OWNER_KEY);
       }
       const project = selectedProject();
       projectLabel.textContent = `当前项目：${project ? project.name : "未选择"}`;
@@ -327,7 +333,8 @@
       } else {
         projectSelect.innerHTML = projects.map(p => `<option value="${p.id}">${p.name}</option>`).join("");
       }
-      const remembered = localStorage.getItem(BM_PROJECT_KEY);
+      const rememberedOwner = localStorage.getItem(BM_PROJECT_OWNER_KEY);
+      const remembered = rememberedOwner === currentUser?.id ? localStorage.getItem(BM_PROJECT_KEY) : "";
       const nextProjectId = projects.some(p => p.id === currentProjectId) ? currentProjectId
         : projects.some(p => p.id === remembered) ? remembered
         : projects[0]?.id || "";
@@ -361,6 +368,7 @@
         const { data, error } = await withTimeout(sbClient
         .from("bi_projects")
         .select("id,name,created_at,updated_at")
+        .eq("user_id", currentUser.id)
         .eq("active", true)
         .order("updated_at", { ascending: false }), "读取项目列表超时，请检查网络或刷新页面。");
         if (error) {

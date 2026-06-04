@@ -854,6 +854,7 @@
         .from("calculator_project_states")
         .select("data")
         .eq("project_id", projectId)
+        .eq("user_id", user.id)
         .maybeSingle(), "读取云端超时，请稍后重试。");
       syncingCloud = false;
       if (currentProjectId() !== projectId) {
