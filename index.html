@@ -230,8 +230,13 @@
 
     const tools = {
       profit: { url: "BM-profit-calculator/" },
-      "product-card": { url: "BM-product-card-bi/" }
+      "product-card": { url: "BM-product-card-bi/" },
+      "sku-consumption": { url: "BM-sku-consumption/" }
     };
+    const navEl = document.querySelector(".nav");
+    if (navEl && !navEl.querySelector('[data-tool="sku-consumption"]')) {
+      navEl.insertAdjacentHTML("beforeend", `<button data-tool="sku-consumption">SKU 收入消耗归集<span>SKUID、GMV、组合拆分、周期 PID</span></button>`);
+    }
     const buttons = [...document.querySelectorAll("[data-tool]")];
     const frame = document.getElementById("toolFrame");
     const authEmail = document.getElementById("authEmail");
@@ -569,6 +574,7 @@
       refreshToolFrame();
     });
     buttons.forEach(btn => btn.addEventListener("click", () => selectTool(btn.dataset.tool)));
+    window.addEventListener("hashchange", () => selectTool(location.hash.replace("#", "") || "profit", false));
     frame.addEventListener("load", () => setTimeout(hideEmbeddedAuth, 100));
     if (sbClient) sbClient.auth.onAuthStateChange((event) => {
       if (event === "PASSWORD_RECOVERY") {

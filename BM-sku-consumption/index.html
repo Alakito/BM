@@ -1,0 +1,852 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BM-SKU 收入与消耗归集工具</title>
+  <script src="./xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --bg: #f4f7fb;
+      --panel: #ffffff;
+      --text: #102033;
+      --muted: #637083;
+      --line: #d9e2ee;
+      --brand: #2563eb;
+      --brand2: #0f9f8f;
+      --soft: #eef6ff;
+      --soft2: #ecfdf5;
+      --warn: #b45309;
+      --bad: #dc2626;
+      --good: #16803a;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--text);
+      background: var(--bg);
+      font-family: Inter, system-ui, "Microsoft YaHei", Arial, sans-serif;
+    }
+    button, input, select, textarea {
+      font: inherit;
+    }
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 800;
+      white-space: nowrap;
+    }
+    button.primary {
+      color: #fff;
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow: 0 10px 22px rgba(37,99,235,.16);
+    }
+    button.danger { color: var(--bad); border-color: #fecaca; }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    input, select, textarea {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      color: var(--text);
+      padding: 8px 10px;
+      min-height: 36px;
+    }
+    textarea {
+      min-height: 36px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+    .app {
+      display: grid;
+      grid-template-rows: auto auto 1fr;
+      gap: 14px;
+      min-height: 100vh;
+      padding: 18px;
+    }
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 2px 4px 0;
+    }
+    h1 {
+      margin: 0;
+      font-size: 26px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+    .sub {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.55;
+      font-weight: 700;
+    }
+    .project-chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 34px;
+      border-radius: 999px;
+      padding: 7px 12px;
+      background: #e8f1ff;
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 900;
+      max-width: 340px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .toolbar {
+      display: grid;
+      grid-template-columns: minmax(260px, 1.1fr) repeat(4, minmax(130px, .6fr)) auto;
+      gap: 10px;
+      align-items: end;
+      padding: 14px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .file-label {
+      border: 1px dashed #9fb6d8;
+      border-radius: 8px;
+      background: #f8fbff;
+      padding: 10px;
+      min-height: 64px;
+    }
+    .file-label input { padding: 0; border: 0; min-height: 24px; background: transparent; }
+    .status {
+      grid-column: 1 / -1;
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      font-weight: 800;
+    }
+    .status.ok { color: var(--good); }
+    .status.warn { color: var(--warn); }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(140px, 1fr));
+      gap: 10px;
+    }
+    .kpi {
+      min-height: 84px;
+      padding: 13px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+    }
+    .kpi span { color: var(--muted); font-size: 12px; font-weight: 900; }
+    .kpi b { display: block; margin-top: 8px; font-size: 24px; line-height: 1.1; }
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding: 4px 0 0;
+    }
+    .tabs button.active {
+      color: #fff;
+      border-color: transparent;
+      background: #102033;
+    }
+    .view { display: none; min-width: 0; }
+    .view.active { display: grid; gap: 12px; }
+    .panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel);
+      min-width: 0;
+      overflow: hidden;
+    }
+    .panel-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      background: #fbfdff;
+    }
+    h2 {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.25;
+      letter-spacing: 0;
+    }
+    .panel-note {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .table-wrap {
+      width: 100%;
+      overflow: auto;
+      max-height: calc(100vh - 360px);
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 980px;
+      font-size: 13px;
+    }
+    th, td {
+      border-bottom: 1px solid #edf1f6;
+      padding: 8px 9px;
+      text-align: left;
+      vertical-align: top;
+    }
+    th {
+      position: sticky;
+      top: 0;
+      z-index: 1;
+      background: #f8fafc;
+      color: #46566c;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    td.num, th.num { text-align: right; }
+    td.center, th.center { text-align: center; }
+    tr.unmapped td { background: #fff7ed; }
+    tr.combo td { background: #f0fdf4; }
+    .row-actions {
+      display: flex;
+      gap: 6px;
+      justify-content: flex-end;
+    }
+    .mini {
+      min-height: 30px;
+      padding: 5px 8px;
+      font-size: 12px;
+    }
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      border-radius: 999px;
+      padding: 4px 8px;
+      background: var(--soft);
+      color: #1d4ed8;
+      font-size: 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
+    .tag.warn { background: #fff7ed; color: var(--warn); }
+    .tag.good { background: var(--soft2); color: var(--good); }
+    .empty {
+      padding: 26px 16px;
+      color: var(--muted);
+      text-align: center;
+      font-weight: 800;
+    }
+    .grid2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 1100px) {
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .kpis { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+      header { align-items: flex-start; flex-direction: column; }
+      .grid2 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 680px) {
+      .app { padding: 12px; }
+      .toolbar { grid-template-columns: 1fr; }
+      .kpis { grid-template-columns: 1fr; }
+      .panel-head { align-items: flex-start; flex-direction: column; }
+      .project-chip { max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <header>
+      <div>
+        <h1>SKU 收入与消耗归集</h1>
+        <div class="sub">导入平台导出的 SKUID、GMV、消耗量数据，维护 SKU 简称和组合拆分规则，输出销售 SKU 口径与单品消耗口径。</div>
+      </div>
+      <div class="project-chip" id="projectChip">项目：本地缓存</div>
+    </header>
+
+    <section class="toolbar">
+      <label class="file-label">
+        导入 Excel / CSV
+        <input id="fileInput" type="file" accept=".xlsx,.xls,.csv">
+      </label>
+      <label>SKUID 列<select id="skuCol"></select></label>
+      <label>GMV 列<select id="gmvCol"></select></label>
+      <label>消耗量列<select id="qtyCol"></select></label>
+      <label>周期列<select id="periodCol"></select></label>
+      <label>PID 列<select id="pidCol"></select></label>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button id="applyColsBtn" class="primary">生成结果</button>
+        <button id="exportBtn">导出</button>
+        <button id="clearBtn" class="danger">清空</button>
+      </div>
+      <div class="status" id="status">等待导入数据。映射规则会按当前项目保存在浏览器本地。</div>
+    </section>
+
+    <section class="kpis">
+      <div class="kpi"><span>导入明细行</span><b id="kpiRows">0</b></div>
+      <div class="kpi"><span>原始 SKUID</span><b id="kpiSkus">0</b></div>
+      <div class="kpi"><span>已匹配 SKUID</span><b id="kpiMapped">0</b></div>
+      <div class="kpi"><span>总 GMV</span><b id="kpiGmv">0</b></div>
+      <div class="kpi"><span>总消耗量</span><b id="kpiQty">0</b></div>
+    </section>
+
+    <nav class="tabs">
+      <button class="active" data-tab="mapping">SKU 映射</button>
+      <button data-tab="single">单品消耗归集</button>
+      <button data-tab="sales">销售 SKU 口径</button>
+      <button data-tab="detail">导入明细</button>
+    </nav>
+
+    <section id="mapping" class="view active">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>SKU 简称与组合拆分</h2>
+            <div class="panel-note">单品可不填拆分规则；组合用 `单品简称*数量;单品简称*数量`，例如 `美白单片*7` 或 `美白盒装*3`。</div>
+          </div>
+          <div class="row-actions">
+            <button id="addMapBtn">新增映射</button>
+            <button id="saveMapBtn" class="primary">保存规则</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table id="mappingTable"></table>
+        </div>
+      </div>
+    </section>
+
+    <section id="single" class="view">
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>单品消耗归集</h2>
+              <div class="panel-note">组合 SKU 的消耗量会按拆分倍数归到单品；GMV 为这些来源 SKU 的贡献 GMV。</div>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="singleTable"></table></div>
+        </div>
+        <div class="panel">
+          <div class="panel-head">
+            <div>
+              <h2>周期 / PID 明细</h2>
+              <div class="panel-note">保留周期和 PID，方便回溯每个来源。</div>
+            </div>
+          </div>
+          <div class="table-wrap"><table id="singleDetailTable"></table></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="sales" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>销售 SKU 口径</h2>
+            <div class="panel-note">按 SKU 简称汇总导入数据，不做组合拆分。</div>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="salesTable"></table></div>
+      </div>
+    </section>
+
+    <section id="detail" class="view">
+      <div class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>导入明细</h2>
+            <div class="panel-note">展示识别后的原始行，未匹配 SKUID 会标黄。</div>
+          </div>
+        </div>
+        <div class="table-wrap"><table id="detailTable"></table></div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    const state = {
+      headers: [],
+      rawRows: [],
+      rows: [],
+      mappings: {},
+      results: { sales: [], singles: [], singleDetails: [] },
+      projectId: new URLSearchParams(location.search).get("project") || localStorage.getItem("bm_current_project_v1") || "local"
+    };
+
+    const els = {
+      fileInput: document.getElementById("fileInput"),
+      skuCol: document.getElementById("skuCol"),
+      gmvCol: document.getElementById("gmvCol"),
+      qtyCol: document.getElementById("qtyCol"),
+      periodCol: document.getElementById("periodCol"),
+      pidCol: document.getElementById("pidCol"),
+      status: document.getElementById("status")
+    };
+
+    const mappingKey = () => `bm_sku_consumption_mapping_v1_${state.projectId}`;
+    const dataKey = () => `bm_sku_consumption_last_data_v1_${state.projectId}`;
+    const fmt = n => Number(n || 0).toLocaleString("zh-CN", { maximumFractionDigits: 2 });
+    const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+    const norm = v => String(v ?? "").trim();
+    const num = v => {
+      if (typeof v === "number") return Number.isFinite(v) ? v : 0;
+      const s = String(v ?? "").replace(/,/g, "").replace(/[^\d.-]/g, "");
+      const n = Number(s);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    function setStatus(text, type = "") {
+      els.status.textContent = text;
+      els.status.className = `status ${type}`;
+    }
+
+    function getMapping(skuId) {
+      if (!state.mappings[skuId]) {
+        state.mappings[skuId] = { skuId, shortName: "", type: "single", componentsText: "" };
+      }
+      return state.mappings[skuId];
+    }
+
+    function saveMappings() {
+      localStorage.setItem(mappingKey(), JSON.stringify(state.mappings));
+      setStatus("映射规则已保存。", "ok");
+    }
+
+    function loadMappings() {
+      try {
+        state.mappings = JSON.parse(localStorage.getItem(mappingKey()) || "{}") || {};
+      } catch {
+        state.mappings = {};
+      }
+    }
+
+    function guessColumn(headers, keywords) {
+      const lower = headers.map(h => String(h).toLowerCase());
+      for (const kw of keywords) {
+        const i = lower.findIndex(h => h.includes(kw.toLowerCase()));
+        if (i >= 0) return headers[i];
+      }
+      return "";
+    }
+
+    function fillColumnSelects() {
+      const options = ["", ...state.headers].map(h => `<option value="${esc(h)}">${h ? esc(h) : "不使用"}</option>`).join("");
+      [els.skuCol, els.gmvCol, els.qtyCol, els.periodCol, els.pidCol].forEach(sel => sel.innerHTML = options);
+      els.skuCol.value = guessColumn(state.headers, ["skuid", "sku id", "seller sku", "商品sku", "sku"]);
+      els.gmvCol.value = guessColumn(state.headers, ["gmv", "revenue", "收入", "成交金额", "销售额"]);
+      els.qtyCol.value = guessColumn(state.headers, ["成交件数", "消耗", "quantity", "qty", "sold", "销量", "订单商品数", "件数", "订单数"]);
+      els.periodCol.value = guessColumn(state.headers, ["周期", "period", "date", "日期", "时间"]);
+      els.pidCol.value = guessColumn(state.headers, ["pid", "product id", "商品id", "商品编号"]);
+    }
+
+    function parseRows() {
+      const skuCol = els.skuCol.value;
+      const gmvCol = els.gmvCol.value;
+      const qtyCol = els.qtyCol.value;
+      if (!skuCol) {
+        setStatus("请先选择 SKUID 列。", "warn");
+        return false;
+      }
+      state.rows = state.rawRows
+        .map((r, index) => ({
+          index: index + 1,
+          skuId: norm(r[skuCol]),
+          gmv: gmvCol ? num(r[gmvCol]) : 0,
+          qty: qtyCol ? num(r[qtyCol]) : 0,
+          period: els.periodCol.value ? norm(r[els.periodCol.value]) : "",
+          pid: els.pidCol.value ? norm(r[els.pidCol.value]) : "",
+          raw: r
+        }))
+        .filter(r => r.skuId);
+      for (const row of state.rows) getMapping(row.skuId);
+      localStorage.setItem(dataKey(), JSON.stringify({ headers: state.headers, rawRows: state.rawRows, cols: selectedCols() }));
+      compute();
+      renderAll();
+      const unmapped = Object.values(state.mappings).filter(m => isUsedSku(m.skuId) && !m.shortName.trim()).length;
+      const missingMetrics = !gmvCol || !qtyCol ? " 当前文件缺少或未选择 GMV/消耗量列，已先生成 SKU 映射。" : "";
+      setStatus(`已生成结果：${state.rows.length} 行，${unmapped} 个 SKUID 待补 SKU 简称。${missingMetrics}`, unmapped || missingMetrics ? "warn" : "ok");
+      return true;
+    }
+
+    function selectedCols() {
+      return {
+        skuCol: els.skuCol.value,
+        gmvCol: els.gmvCol.value,
+        qtyCol: els.qtyCol.value,
+        periodCol: els.periodCol.value,
+        pidCol: els.pidCol.value
+      };
+    }
+
+    function restoreCols(cols) {
+      if (!cols) return;
+      for (const [key, value] of Object.entries(cols)) {
+        if (els[key] && [...els[key].options].some(o => o.value === value)) els[key].value = value;
+      }
+    }
+
+    function isUsedSku(skuId) {
+      return state.rows.some(r => r.skuId === skuId);
+    }
+
+    function parseComponents(mapping) {
+      const shortName = mapping.shortName.trim() || mapping.skuId;
+      if (mapping.type === "single") return [{ name: shortName, factor: 1 }];
+      const text = mapping.componentsText.trim();
+      if (!text) return [{ name: shortName, factor: 1 }];
+      return text.split(/[;；\n]+/).map(part => {
+        const clean = part.trim();
+        if (!clean) return null;
+        const pieces = clean.split(/[*xX×]/).map(x => x.trim()).filter(Boolean);
+        const factor = pieces.length > 1 ? num(pieces.at(-1)) : 1;
+        const name = pieces.length > 1 ? pieces.slice(0, -1).join("*").trim() : clean;
+        return name ? { name, factor: factor || 1 } : null;
+      }).filter(Boolean);
+    }
+
+    function addToMap(map, key, patch) {
+      if (!map.has(key)) map.set(key, { ...patch });
+      else {
+        const row = map.get(key);
+        for (const [k, v] of Object.entries(patch)) {
+          row[k] = typeof v === "number" ? num(row[k]) + v : (row[k] || v);
+        }
+      }
+    }
+
+    function compute() {
+      const sales = new Map();
+      const singles = new Map();
+      const singleDetails = new Map();
+      for (const row of state.rows) {
+        const mapping = getMapping(row.skuId);
+        const shortName = mapping.shortName.trim() || "未匹配";
+        const salesKey = [shortName, mapping.type].join("||");
+        addToMap(sales, salesKey, {
+          skuShortName: shortName,
+          type: mapping.type,
+          sourceSkuCount: 0,
+          rowCount: 1,
+          gmv: row.gmv,
+          qty: row.qty
+        });
+        sales.get(salesKey).sourceSkuCount = new Set(state.rows.filter(r => {
+          const m = getMapping(r.skuId);
+          return (m.shortName.trim() || "未匹配") === shortName && m.type === mapping.type;
+        }).map(r => r.skuId)).size;
+
+        for (const comp of parseComponents(mapping)) {
+          const splitQty = row.qty * comp.factor;
+          const singleKey = comp.name;
+          addToMap(singles, singleKey, {
+            singleName: comp.name,
+            sourceSkuCount: 0,
+            gmv: row.gmv,
+            sourceQty: row.qty,
+            consumptionQty: splitQty
+          });
+          singles.get(singleKey).sourceSkuCount = new Set(state.rows.filter(r => parseComponents(getMapping(r.skuId)).some(c => c.name === comp.name)).map(r => r.skuId)).size;
+
+          const detailKey = [comp.name, row.period, row.pid, row.skuId, shortName].join("||");
+          addToMap(singleDetails, detailKey, {
+            singleName: comp.name,
+            period: row.period,
+            pid: row.pid,
+            sourceSkuId: row.skuId,
+            sourceShortName: shortName,
+            factor: comp.factor,
+            gmv: row.gmv,
+            sourceQty: row.qty,
+            consumptionQty: splitQty
+          });
+        }
+      }
+      state.results.sales = [...sales.values()].sort((a, b) => b.gmv - a.gmv);
+      state.results.singles = [...singles.values()].sort((a, b) => b.consumptionQty - a.consumptionQty);
+      state.results.singleDetails = [...singleDetails.values()].sort((a, b) => String(a.singleName).localeCompare(String(b.singleName), "zh-CN"));
+    }
+
+    function table(id, columns, rows, emptyText = "暂无数据") {
+      const el = document.getElementById(id);
+      if (!rows.length) {
+        el.innerHTML = `<tr><td class="empty">${emptyText}</td></tr>`;
+        return;
+      }
+      el.innerHTML = `<thead><tr>${columns.map(c => `<th class="${c.cls || ""}">${esc(c.label)}</th>`).join("")}</tr></thead><tbody>` +
+        rows.map(row => `<tr class="${row._class || ""}">${columns.map(c => `<td class="${c.cls || ""}">${c.html ? c.html(row) : esc(row[c.key])}</td>`).join("")}</tr>`).join("") +
+        "</tbody>";
+    }
+
+    function renderMapping() {
+      const used = new Set(state.rows.map(r => r.skuId));
+      const rows = Object.values(state.mappings)
+        .sort((a, b) => Number(used.has(b.skuId)) - Number(used.has(a.skuId)) || String(a.skuId).localeCompare(String(b.skuId), "zh-CN"))
+        .map(m => ({ ...m, _class: `${!m.shortName.trim() && used.has(m.skuId) ? "unmapped" : ""} ${m.type === "combo" ? "combo" : ""}` }));
+      const el = document.getElementById("mappingTable");
+      if (!rows.length) {
+        el.innerHTML = `<tr><td class="empty">导入后会自动生成待匹配 SKUID，也可以手动新增映射。</td></tr>`;
+        return;
+      }
+      el.innerHTML = `<thead><tr>
+        <th style="width:170px">SKUID</th><th style="width:210px">SKU 简称</th><th style="width:110px">类型</th>
+        <th>拆分规则</th><th style="width:120px">状态</th><th class="num" style="width:95px">操作</th>
+      </tr></thead><tbody>` + rows.map((m, i) => {
+        const usedTag = used.has(m.skuId) ? `<span class="tag good">本次导入</span>` : `<span class="tag">规则库</span>`;
+        const status = m.shortName.trim() ? usedTag : `<span class="tag warn">待匹配</span>`;
+        return `<tr class="${m._class}" data-sku="${esc(m.skuId)}">
+          <td><input data-field="skuId" value="${esc(m.skuId)}"></td>
+          <td><input data-field="shortName" value="${esc(m.shortName)}" placeholder="如 美白单片"></td>
+          <td><select data-field="type">
+            <option value="single" ${m.type === "single" ? "selected" : ""}>单品</option>
+            <option value="combo" ${m.type === "combo" ? "selected" : ""}>组合</option>
+          </select></td>
+          <td><textarea data-field="componentsText" placeholder="组合示例：美白单片*7;赠品*1">${esc(m.componentsText || "")}</textarea></td>
+          <td>${status}</td>
+          <td class="num"><button class="mini danger" data-delete="${esc(m.skuId)}">删除</button></td>
+        </tr>`;
+      }).join("") + "</tbody>";
+    }
+
+    function renderResults() {
+      table("salesTable", [
+        { label: "SKU 简称", key: "skuShortName" },
+        { label: "类型", html: r => r.type === "combo" ? "组合" : "单品" },
+        { label: "来源 SKUID 数", key: "sourceSkuCount", cls: "num" },
+        { label: "明细行数", key: "rowCount", cls: "num" },
+        { label: "GMV", cls: "num", html: r => fmt(r.gmv) },
+        { label: "消耗量", cls: "num", html: r => fmt(r.qty) }
+      ], state.results.sales);
+
+      table("singleTable", [
+        { label: "单品简称", key: "singleName" },
+        { label: "来源 SKUID 数", key: "sourceSkuCount", cls: "num" },
+        { label: "来源 GMV", cls: "num", html: r => fmt(r.gmv) },
+        { label: "来源销售消耗", cls: "num", html: r => fmt(r.sourceQty) },
+        { label: "归集单品消耗", cls: "num", html: r => fmt(r.consumptionQty) }
+      ], state.results.singles);
+
+      table("singleDetailTable", [
+        { label: "单品简称", key: "singleName" },
+        { label: "周期", key: "period" },
+        { label: "PID", key: "pid" },
+        { label: "来源 SKUID", key: "sourceSkuId" },
+        { label: "来源 SKU 简称", key: "sourceShortName" },
+        { label: "拆分倍数", cls: "num", html: r => fmt(r.factor) },
+        { label: "GMV", cls: "num", html: r => fmt(r.gmv) },
+        { label: "来源消耗", cls: "num", html: r => fmt(r.sourceQty) },
+        { label: "归集消耗", cls: "num", html: r => fmt(r.consumptionQty) }
+      ], state.results.singleDetails);
+    }
+
+    function renderDetail() {
+      const rows = state.rows.slice(0, 1000).map(r => {
+        const m = getMapping(r.skuId);
+        return { ...r, shortName: m.shortName.trim(), type: m.type, _class: m.shortName.trim() ? "" : "unmapped" };
+      });
+      table("detailTable", [
+        { label: "行号", key: "index", cls: "num" },
+        { label: "周期", key: "period" },
+        { label: "PID", key: "pid" },
+        { label: "SKUID", key: "skuId" },
+        { label: "SKU 简称", html: r => r.shortName || "待匹配" },
+        { label: "类型", html: r => r.type === "combo" ? "组合" : "单品" },
+        { label: "GMV", cls: "num", html: r => fmt(r.gmv) },
+        { label: "消耗量", cls: "num", html: r => fmt(r.qty) }
+      ], rows, "暂无导入明细");
+    }
+
+    function renderKpis() {
+      const skuSet = new Set(state.rows.map(r => r.skuId));
+      const mapped = [...skuSet].filter(id => getMapping(id).shortName.trim()).length;
+      document.getElementById("kpiRows").textContent = fmt(state.rows.length);
+      document.getElementById("kpiSkus").textContent = fmt(skuSet.size);
+      document.getElementById("kpiMapped").textContent = `${fmt(mapped)}/${fmt(skuSet.size)}`;
+      document.getElementById("kpiGmv").textContent = fmt(state.rows.reduce((s, r) => s + r.gmv, 0));
+      document.getElementById("kpiQty").textContent = fmt(state.rows.reduce((s, r) => s + r.qty, 0));
+    }
+
+    function renderAll() {
+      renderKpis();
+      renderMapping();
+      renderResults();
+      renderDetail();
+    }
+
+    function scoreHeaderRow(values) {
+      const text = values.map(v => String(v || "").trim().toLowerCase()).join(" ");
+      let score = 0;
+      if (/\bsku\s*id\b|skuid|商品sku|seller sku/.test(text)) score += 8;
+      if (/\bgmv\b|收入|销售额|成交金额/.test(text)) score += 4;
+      if (/成交件数|消耗|销量|订单数|quantity|qty/.test(text)) score += 4;
+      if (/\bpid\b|product\s*id|商品id|商品编号/.test(text)) score += 3;
+      if (/商品|product|状态|status/.test(text)) score += 1;
+      score += values.filter(v => String(v || "").trim()).length * 0.1;
+      return score;
+    }
+
+    function uniqueHeaders(values) {
+      const seen = {};
+      return values.map((value, index) => {
+        const base = String(value || "").trim() || `空列_${index + 1}`;
+        seen[base] = (seen[base] || 0) + 1;
+        return seen[base] === 1 ? base : `${base}_${seen[base]}`;
+      });
+    }
+
+    function findPeriodValue(matrix, headerIndex) {
+      for (let i = 0; i < Math.min(headerIndex, 8); i++) {
+        const nonEmpty = (matrix[i] || []).map(v => String(v || "").trim()).filter(Boolean);
+        const period = nonEmpty.find(v => /\d{4}[-/]\d{1,2}[-/]\d{1,2}.*\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(v));
+        if (period) return period;
+      }
+      return "";
+    }
+
+    function rowsFromMatrix(matrix) {
+      const candidates = matrix.slice(0, 30).map((row, index) => ({ index, score: scoreHeaderRow(row) }));
+      const best = candidates.sort((a, b) => b.score - a.score)[0] || { index: 0, score: 0 };
+      const headerIndex = best.score >= 4 ? best.index : 0;
+      const headers = uniqueHeaders(matrix[headerIndex] || []);
+      const periodValue = findPeriodValue(matrix, headerIndex);
+      const rows = matrix.slice(headerIndex + 1)
+        .filter(row => row.some(cell => String(cell || "").trim()))
+        .map(row => {
+          const item = {};
+          headers.forEach((header, index) => item[header] = row[index] ?? "");
+          if (periodValue && !headers.includes("导入周期")) item["导入周期"] = periodValue;
+          return item;
+        });
+      const finalHeaders = periodValue && !headers.includes("导入周期") ? ["导入周期", ...headers] : headers;
+      return { headers: finalHeaders, rows, headerRowNumber: headerIndex + 1, periodValue };
+    }
+
+    async function readFile(file) {
+      if (!window.XLSX) {
+        setStatus("Excel 解析库加载失败，请检查网络后刷新页面。", "warn");
+        return;
+      }
+      const buffer = await file.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: "array", cellDates: true });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const matrix = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "", blankrows: false });
+      const parsed = rowsFromMatrix(matrix);
+      state.rawRows = parsed.rows;
+      state.headers = parsed.headers;
+      fillColumnSelects();
+      parseRows();
+      setStatus(`已识别第 ${parsed.headerRowNumber} 行为表头${parsed.periodValue ? `，周期 ${parsed.periodValue}` : ""}。`, "ok");
+    }
+
+    function syncMappingFromTable() {
+      const next = {};
+      document.querySelectorAll("#mappingTable tbody tr[data-sku]").forEach(tr => {
+        const oldSku = tr.dataset.sku;
+        const item = { skuId: "", shortName: "", type: "single", componentsText: "" };
+        tr.querySelectorAll("[data-field]").forEach(input => item[input.dataset.field] = input.value.trim());
+        if (!item.skuId) item.skuId = oldSku;
+        item.type = item.type === "combo" ? "combo" : "single";
+        next[item.skuId] = item;
+      });
+      state.mappings = next;
+      for (const row of state.rows) getMapping(row.skuId);
+      compute();
+      renderAll();
+    }
+
+    function exportWorkbook() {
+      if (!window.XLSX) return setStatus("Excel 导出库加载失败，请检查网络后刷新页面。", "warn");
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.results.singles), "单品消耗归集");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.results.sales), "销售SKU口径");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(state.results.singleDetails), "周期PID明细");
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(Object.values(state.mappings)), "SKU映射规则");
+      XLSX.writeFile(wb, `BM-SKU收入消耗归集-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
+
+    function clearAll() {
+      if (!confirm("确认清空本页导入数据？已保存的 SKU 映射规则会保留。")) return;
+      localStorage.removeItem(dataKey());
+      state.headers = [];
+      state.rawRows = [];
+      state.rows = [];
+      state.results = { sales: [], singles: [], singleDetails: [] };
+      [els.skuCol, els.gmvCol, els.qtyCol, els.periodCol, els.pidCol].forEach(sel => sel.innerHTML = "");
+      renderAll();
+      setStatus("已清空导入数据，映射规则仍保留。", "ok");
+    }
+
+    document.querySelectorAll("[data-tab]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("active", b === btn));
+        document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === btn.dataset.tab));
+      });
+    });
+    els.fileInput.addEventListener("change", e => e.target.files[0] && readFile(e.target.files[0]));
+    document.getElementById("applyColsBtn").addEventListener("click", parseRows);
+    document.getElementById("saveMapBtn").addEventListener("click", () => { syncMappingFromTable(); saveMappings(); });
+    document.getElementById("exportBtn").addEventListener("click", exportWorkbook);
+    document.getElementById("clearBtn").addEventListener("click", clearAll);
+    document.getElementById("addMapBtn").addEventListener("click", () => {
+      syncMappingFromTable();
+      const id = `SKU-${Date.now()}`;
+      state.mappings[id] = { skuId: id, shortName: "", type: "single", componentsText: "" };
+      renderMapping();
+    });
+    document.getElementById("mappingTable").addEventListener("click", e => {
+      const sku = e.target?.dataset?.delete;
+      if (!sku) return;
+      delete state.mappings[sku];
+      for (const row of state.rows) getMapping(row.skuId);
+      compute();
+      renderAll();
+    });
+    document.getElementById("mappingTable").addEventListener("change", () => {
+      syncMappingFromTable();
+      localStorage.setItem(mappingKey(), JSON.stringify(state.mappings));
+    });
+
+    loadMappings();
+    document.getElementById("projectChip").textContent = `项目：${state.projectId === "local" ? "本地缓存" : state.projectId}`;
+    try {
+      const last = JSON.parse(localStorage.getItem(dataKey()) || "null");
+      if (last?.rawRows?.length) {
+        state.headers = last.headers || Object.keys(last.rawRows[0] || {});
+        state.rawRows = last.rawRows;
+        fillColumnSelects();
+        restoreCols(last.cols);
+        parseRows();
+      } else {
+        renderAll();
+      }
+    } catch {
+      renderAll();
+    }
+  </script>
+</body>
+</html>
