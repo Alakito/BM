@@ -523,7 +523,7 @@
           <h2>目标总控</h2>
           <div class="panel-body">
             <table id="targetOverviewInputs"></table>
-            <p class="note">目标拆解独立保存，不会改动成本测算的项目输入；需要联动时，可把目标 GMV、预算和 AOV 填回项目输入。</p>
+            <p class="note">目标拆解直接读取项目总览里的目标 GMV；这里维护月份、渠道、产品比重和漏斗参数，下面自动分配拆解目标。</p>
           </div>
         </div>
         <div class="panel">
@@ -538,7 +538,7 @@
           <h2>渠道转化与 GMV 占比</h2>
           <div class="panel-body">
             <table id="targetChannelInputs"></table>
-            <p class="note">渠道 CTR / 点击成交率留空时，会默认沿用对应月份的整体漏斗目标；占比和转化率均填小数，例如 25% 填 0.25。</p>
+            <p class="note">渠道 CTR / 点击成交率留空时，会默认沿用对应月份的整体漏斗目标；月度、渠道和产品比重均按同组归一化分配，例如 15/35/50 或 0.15/0.35/0.5 都可。</p>
           </div>
         </div>
         <div class="panel">
@@ -742,9 +742,9 @@
         totalGmv: 4000000,
         note: "GMV=AOV×订单；订单=曝光×CTR×点击成交率；广告预算=GMV÷ROI",
         months: [
-          { name: "7月", stage: "正式运营首月：打开市场与口碑", gmv: 600000, aov: 220, ctrRate: 0.05, clickOrderRate: 0.03, roi: 1.5 },
-          { name: "8月", stage: "增长放大：核心IP与达人素材拉升", gmv: 1400000, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2 },
-          { name: "9月", stage: "规模冲刺：完成季度400万目标", gmv: 2000000, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2.2222222222 }
+          { name: "7月", stage: "正式运营首月：打开市场与口碑", gmvShare: 0.15, aov: 220, ctrRate: 0.05, clickOrderRate: 0.03, roi: 1.5 },
+          { name: "8月", stage: "增长放大：核心IP与达人素材拉升", gmvShare: 0.35, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2 },
+          { name: "9月", stage: "规模冲刺：完成季度400万目标", gmvShare: 0.50, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2.2222222222 }
         ],
         channels: [
           { name: "短视频", role: "达人/短视频素材跑量主渠道", shares: [0.80, 0.75, 0.65], ctrRate: "", clickOrderRate: "" },
@@ -960,7 +960,7 @@
         if (d.orderShare !== "" && d.orderShare != null) d.orderShare = normalizeRateNumber(d.orderShare);
       });
       (next.targetPlan?.months || []).forEach(m => {
-        ["ctrRate", "clickOrderRate"].forEach(k => {
+        ["gmvShare", "ctrRate", "clickOrderRate"].forEach(k => {
           if (m[k] !== "" && m[k] != null) m[k] = normalizeRateNumber(m[k]);
         });
       });
@@ -1540,10 +1540,25 @@
       if (!Array.isArray(state.targetPlan.products) || !state.targetPlan.products.length) state.targetPlan.products = structuredClone(defaultState.targetPlan.products);
       return state.targetPlan;
     }
+    function normalizedWeight(raw, total, count) {
+      if (total > 0) return num(raw) / total;
+      return count > 0 ? 1 / count : 0;
+    }
+    function monthWeightValue(m, fallbackTotal) {
+      if (m.gmvShare !== "" && m.gmvShare != null) return num(m.gmvShare);
+      if (m.share !== "" && m.share != null) return num(m.share);
+      if (m.gmv !== "" && m.gmv != null && fallbackTotal > 0) return num(m.gmv) / fallbackTotal;
+      return 0;
+    }
     function computeTargetPlan() {
       const plan = getTargetPlan();
+      const legacyMonthTotal = plan.months.reduce((sum, m) => sum + num(m.gmv), 0);
+      const totalTargetGmv = num(state.project?.gmv) || num(plan.totalGmv) || legacyMonthTotal;
+      const rawMonthWeights = plan.months.map(m => monthWeightValue(m, legacyMonthTotal));
+      const monthWeightTotal = rawMonthWeights.reduce((sum, v) => sum + num(v), 0);
       const months = plan.months.map((m, mi) => {
-        const gmv = num(m.gmv);
+        const gmvShare = normalizedWeight(rawMonthWeights[mi], monthWeightTotal, plan.months.length);
+        const gmv = totalTargetGmv * gmvShare;
         const aov = num(m.aov);
         const ctr = num(m.ctrRate);
         const clickOrder = num(m.clickOrderRate);
@@ -1552,7 +1567,7 @@
         const clicks = clickOrder > 0 ? orders / clickOrder : 0;
         const exposure = ctr > 0 ? clicks / ctr : 0;
         const budget = roi > 0 ? gmv / roi : 0;
-        return { ...m, monthIndex: mi, gmv, aov, ctr, clickOrder, roi, orders, clicks, exposure, budget };
+        return { ...m, monthIndex: mi, gmvShare, gmv, aov, ctr, clickOrder, roi, orders, clicks, exposure, budget };
       });
       const monthTotals = months.reduce((a, m) => {
         a.gmv += m.gmv; a.orders += m.orders; a.clicks += m.clicks; a.exposure += m.exposure; a.budget += m.budget;
@@ -1561,9 +1576,10 @@
       monthTotals.roi = monthTotals.budget > 0 ? monthTotals.gmv / monthTotals.budget : 0;
       monthTotals.aov = monthTotals.orders > 0 ? monthTotals.gmv / monthTotals.orders : 0;
       const channelRows = [];
+      const channelShareTotals = months.map((m, mi) => plan.channels.reduce((sum, ch) => sum + num(ch.shares?.[mi]), 0));
       plan.channels.forEach((ch, ci) => {
         months.forEach((m, mi) => {
-          const share = num(ch.shares?.[mi]);
+          const share = normalizedWeight(ch.shares?.[mi], channelShareTotals[mi], plan.channels.length);
           const gmv = m.gmv * share;
           const ctr = ch.ctrRate === "" || ch.ctrRate == null ? m.ctr : num(ch.ctrRate);
           const clickOrder = ch.clickOrderRate === "" || ch.clickOrderRate == null ? m.clickOrder : num(ch.clickOrderRate);
@@ -1575,9 +1591,10 @@
         });
       });
       const productRows = [];
+      const productWeightTotals = months.map((m, mi) => plan.products.reduce((sum, p) => sum + num(p.weights?.[mi]), 0));
       plan.products.forEach((p, pi) => {
         months.forEach((m, mi) => {
-          const weight = num(p.weights?.[mi]);
+          const weight = normalizedWeight(p.weights?.[mi], productWeightTotals[mi], plan.products.length);
           const gmv = m.gmv * weight;
           const orders = m.aov > 0 ? gmv / m.aov : 0;
           productRows.push({ productIndex: pi, monthIndex: mi, month: m.name, product: p.name, role: p.role, weight, gmv, orders });
@@ -1588,25 +1605,27 @@
     function renderTargetPlan() {
       const t = computeTargetPlan();
       document.getElementById("targetKpis").innerHTML = [
-        ["Q3目标GMV", money(t.monthTotals.gmv), `${t.months.length} 个月合计`],
-        ["Q3订单目标", money0.format(t.monthTotals.orders), `综合AOV ${money(t.monthTotals.aov)}`],
-        ["Q3曝光目标", money0.format(t.monthTotals.exposure), `点击 ${money0.format(t.monthTotals.clicks)}`],
-        ["Q3广告预算", money(t.monthTotals.budget), `整体ROI ${ratio(t.monthTotals.roi)}`],
-        ["成本测算GMV", money(computeSummary().gmv), "用于和利润模型对照"]
+        ["拆解总GMV", money(t.monthTotals.gmv), "来自项目总览目标"],
+        ["订单目标", money0.format(t.monthTotals.orders), `综合AOV ${money(t.monthTotals.aov)}`],
+        ["曝光目标", money0.format(t.monthTotals.exposure), `点击 ${money0.format(t.monthTotals.clicks)}`],
+        ["广告预算", money(t.monthTotals.budget), `整体ROI ${ratio(t.monthTotals.roi)}`],
+        ["成本测算GMV", money(computeSummary().gmv), "与利润模型保持一致"]
       ].map(([l, v, sub]) => `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${sub}</div></div>`).join("");
 
       document.getElementById("targetOverviewInputs").innerHTML = `<tr><th>字段</th><th>值</th></tr>
         <tr><td>方案名称</td><td class="input-cell">${input(t.plan.name, "targetPlan.name", "text")}</td></tr>
-        <tr><td>Q3目标GMV</td><td class="calc-cell num">${money(t.monthTotals.gmv)}</td></tr>
-        <tr><td>Q3广告预算</td><td class="calc-cell num">${money(t.monthTotals.budget)}</td></tr>
-        <tr><td>Q3整体ROI</td><td class="calc-cell num">${ratio(t.monthTotals.roi)}</td></tr>
+        <tr><td>项目总览目标GMV</td><td class="calc-cell num">${money(num(state.project?.gmv))}</td></tr>
+        <tr><td>当前拆解GMV</td><td class="calc-cell num">${money(t.monthTotals.gmv)}</td></tr>
+        <tr><td>拆解广告预算</td><td class="calc-cell num">${money(t.monthTotals.budget)}</td></tr>
+        <tr><td>拆解整体ROI</td><td class="calc-cell num">${ratio(t.monthTotals.roi)}</td></tr>
         <tr><td>测算口径说明</td><td class="input-cell">${input(t.plan.note, "targetPlan.note", "text")}</td></tr>`;
 
-      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV目标</th><th class="num">AOV</th><th class="num">CTR</th><th class="num">点击成交率</th><th class="num">ROI</th></tr>` +
+      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">AOV</th><th class="num">CTR</th><th class="num">点击成交率</th><th class="num">ROI</th></tr>` +
         t.plan.months.map((m, i) => `<tr>
           <td class="input-cell">${input(m.name, `targetPlan.months.${i}.name`, "text")}</td>
           <td class="input-cell">${input(m.stage, `targetPlan.months.${i}.stage`, "text")}</td>
-          <td class="input-cell">${input(m.gmv, `targetPlan.months.${i}.gmv`)}</td>
+          <td class="input-cell">${input(t.months[i]?.gmvShare ?? 0, `targetPlan.months.${i}.gmvShare`)}</td>
+          <td class="calc-cell num">${money(t.months[i]?.gmv)}</td>
           <td class="input-cell">${input(m.aov, `targetPlan.months.${i}.aov`)}</td>
           <td class="input-cell">${input(m.ctrRate, `targetPlan.months.${i}.ctrRate`)}</td>
           <td class="input-cell">${input(m.clickOrderRate, `targetPlan.months.${i}.clickOrderRate`)}</td>
