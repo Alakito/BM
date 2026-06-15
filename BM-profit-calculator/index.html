@@ -194,6 +194,16 @@
       font-size: 12px;
       line-height: 1.55;
     }
+    .subhead {
+      margin: 16px 0 8px;
+      color: var(--ink);
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .compact-scroll {
+      max-height: 280px;
+      margin-bottom: 10px;
+    }
     .split {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -417,6 +427,14 @@
       color: var(--muted);
       font-size: 13px;
     }
+    .subhead {
+      margin: 18px 0 10px;
+      font-size: 15px;
+      line-height: 1.25;
+    }
+    .compact-scroll {
+      max-height: 320px;
+    }
     .bar {
       background: #e2e8f0;
       border-radius: 999px;
@@ -500,17 +518,38 @@
 
     <section id="inputs" class="view">
       <div class="grid two">
-        <div class="panel">
-          <h2>项目基础输入</h2>
-          <div class="panel-body">
-            <table id="projectInputs"></table>
+        <div class="grid">
+          <div class="panel">
+            <h2>项目基础输入</h2>
+            <div class="panel-body">
+              <table id="projectInputs"></table>
+            </div>
+          </div>
+          <div class="panel">
+            <h2>场景 GMV 占比</h2>
+            <div class="panel-body">
+              <table id="scenarioInputs"></table>
+              <p class="note">日常/小促/大促占比请填小数，例如 25% 填 0.25、50% 填 0.5；AOV 由实际到手价和订单数自动反推，不需要手填。</p>
+            </div>
           </div>
         </div>
         <div class="panel">
-          <h2>场景 GMV 占比</h2>
+          <h2>目标拆解参数</h2>
           <div class="panel-body">
-            <table id="scenarioInputs"></table>
-            <p class="note">日常/小促/大促占比请填小数，例如 25% 填 0.25、50% 填 0.5；AOV 由实际到手价和订单数自动反推，不需要手填。</p>
+            <p class="note">这里先维护月份、渠道、产品的比重和漏斗目标；目标拆解页会直接读取项目总览 GMV 并自动分配。AOV 影响订单目标，点击成交率影响点击目标，CTR 影响曝光目标。</p>
+            <h3 class="subhead">月份比重与漏斗目标</h3>
+            <div class="scroll compact-scroll">
+              <table class="sticky" id="targetMonthInputs"></table>
+            </div>
+            <h3 class="subhead">渠道 GMV 占比与转化目标</h3>
+            <div class="scroll compact-scroll">
+              <table class="sticky" id="targetChannelInputs"></table>
+            </div>
+            <h3 class="subhead">产品 GMV 权重</h3>
+            <div class="scroll compact-scroll">
+              <table class="sticky" id="targetProductInputs"></table>
+            </div>
+            <p class="note">月度、渠道和产品比重均按同组归一化分配，例如 15/35/50 或 0.15/0.35/0.5 都可；渠道 CTR / 点击成交率留空时，默认沿用对应月份目标。</p>
           </div>
         </div>
       </div>
@@ -518,34 +557,11 @@
 
     <section id="targetPlan" class="view">
       <div class="kpis" id="targetKpis"></div>
-      <div class="grid two">
-        <div class="panel">
-          <h2>目标总控</h2>
-          <div class="panel-body">
-            <table id="targetOverviewInputs"></table>
-            <p class="note">目标拆解直接读取项目总览里的目标 GMV；这里维护月份、渠道、产品比重和漏斗参数，下面自动分配拆解目标。</p>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>月度漏斗参数</h2>
-          <div class="panel-body">
-            <table id="targetMonthInputs"></table>
-          </div>
-        </div>
-      </div>
-      <div class="grid two" style="margin-top:12px">
-        <div class="panel">
-          <h2>渠道转化与 GMV 占比</h2>
-          <div class="panel-body">
-            <table id="targetChannelInputs"></table>
-            <p class="note">渠道 CTR / 点击成交率留空时，会默认沿用对应月份的整体漏斗目标；月度、渠道和产品比重均按同组归一化分配，例如 15/35/50 或 0.15/0.35/0.5 都可。</p>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>单品权重</h2>
-          <div class="panel-body">
-            <table id="targetProductInputs"></table>
-          </div>
+      <div class="panel">
+        <h2>目标总控</h2>
+        <div class="panel-body">
+          <table id="targetOverviewInputs"></table>
+          <p class="note">本页只展示自动拆解结果；月份、渠道、产品比重和 AOV / CTR / 点击成交率请到“项目输入”页右侧维护。</p>
         </div>
       </div>
       <div class="panel" style="margin-top:12px">
@@ -1553,7 +1569,7 @@
     function computeTargetPlan() {
       const plan = getTargetPlan();
       const legacyMonthTotal = plan.months.reduce((sum, m) => sum + num(m.gmv), 0);
-      const totalTargetGmv = num(state.project?.gmv) || num(plan.totalGmv) || legacyMonthTotal;
+      const totalTargetGmv = num(state.project?.gmv);
       const rawMonthWeights = plan.months.map(m => monthWeightValue(m, legacyMonthTotal));
       const monthWeightTotal = rawMonthWeights.reduce((sum, v) => sum + num(v), 0);
       const months = plan.months.map((m, mi) => {
@@ -1613,14 +1629,14 @@
       ].map(([l, v, sub]) => `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${sub}</div></div>`).join("");
 
       document.getElementById("targetOverviewInputs").innerHTML = `<tr><th>字段</th><th>值</th></tr>
-        <tr><td>方案名称</td><td class="input-cell">${input(t.plan.name, "targetPlan.name", "text")}</td></tr>
+        <tr><td>方案名称</td><td class="calc-cell">${t.plan.name || "-"}</td></tr>
         <tr><td>项目总览目标GMV</td><td class="calc-cell num">${money(num(state.project?.gmv))}</td></tr>
         <tr><td>当前拆解GMV</td><td class="calc-cell num">${money(t.monthTotals.gmv)}</td></tr>
         <tr><td>拆解广告预算</td><td class="calc-cell num">${money(t.monthTotals.budget)}</td></tr>
         <tr><td>拆解整体ROI</td><td class="calc-cell num">${ratio(t.monthTotals.roi)}</td></tr>
-        <tr><td>测算口径说明</td><td class="input-cell">${input(t.plan.note, "targetPlan.note", "text")}</td></tr>`;
+        <tr><td>测算口径说明</td><td class="calc-cell">${t.plan.note || "-"}</td></tr>`;
 
-      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">AOV</th><th class="num">CTR</th><th class="num">点击成交率</th><th class="num">ROI</th></tr>` +
+      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">AOV（订单=GMV/AOV）</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率（订单/点击）</th><th class="num">ROI</th></tr>` +
         t.plan.months.map((m, i) => `<tr>
           <td class="input-cell">${input(m.name, `targetPlan.months.${i}.name`, "text")}</td>
           <td class="input-cell">${input(m.stage, `targetPlan.months.${i}.stage`, "text")}</td>
@@ -1632,7 +1648,7 @@
           <td class="input-cell">${input(m.roi, `targetPlan.months.${i}.roi`)}</td>
         </tr>`).join("");
 
-      document.getElementById("targetChannelInputs").innerHTML = `<tr><th>渠道</th><th>角色定位</th>${t.months.map(m => `<th class="num">${m.name} GMV占比</th>`).join("")}<th class="num">渠道CTR</th><th class="num">渠道点击成交率</th></tr>` +
+      document.getElementById("targetChannelInputs").innerHTML = `<tr><th>渠道</th><th>角色定位</th>${t.months.map(m => `<th class="num">${m.name} GMV占比</th>`).join("")}<th class="num">渠道曝光点击率CTR</th><th class="num">渠道点击成交率</th></tr>` +
         t.plan.channels.map((ch, i) => `<tr>
           <td class="input-cell">${input(ch.name, `targetPlan.channels.${i}.name`, "text")}</td>
           <td class="input-cell">${input(ch.role, `targetPlan.channels.${i}.role`, "text")}</td>
@@ -1648,11 +1664,11 @@
           ${t.months.map((m, mi) => `<td class="input-cell">${input(p.weights?.[mi] ?? 0, `targetPlan.products.${i}.weights.${mi}`)}</td>`).join("")}
         </tr>`).join("");
 
-      document.getElementById("targetMonthlyResult").innerHTML = `<tr><th>月份</th><th>阶段</th><th class="num">GMV目标</th><th class="num">AOV</th><th class="num">订单目标</th><th class="num">CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">ROI</th><th class="num">广告预算</th></tr>` +
+      document.getElementById("targetMonthlyResult").innerHTML = `<tr><th>月份</th><th>阶段</th><th class="num">GMV目标</th><th class="num">AOV</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">ROI</th><th class="num">广告预算</th></tr>` +
         t.months.map(m => `<tr><td>${m.name}</td><td>${m.stage}</td><td class="num">${money(m.gmv)}</td><td class="num">${money(m.aov)}</td><td class="num">${money0.format(m.orders)}</td><td class="num">${pct(m.ctr)}</td><td class="num">${pct(m.clickOrder)}</td><td class="num">${money0.format(m.clicks)}</td><td class="num">${money0.format(m.exposure)}</td><td class="num">${ratio(m.roi)}</td><td class="num">${money(m.budget)}</td></tr>`).join("") +
         `<tr class="calc-cell"><td colspan="2">Q3合计</td><td class="num">${money(t.monthTotals.gmv)}</td><td class="num">${money(t.monthTotals.aov)}</td><td class="num">${money0.format(t.monthTotals.orders)}</td><td></td><td></td><td class="num">${money0.format(t.monthTotals.clicks)}</td><td class="num">${money0.format(t.monthTotals.exposure)}</td><td class="num">${ratio(t.monthTotals.roi)}</td><td class="num">${money(t.monthTotals.budget)}</td></tr>`;
 
-      document.getElementById("targetChannelResult").innerHTML = `<tr><th>月份</th><th>渠道</th><th>角色</th><th class="num">GMV占比</th><th class="num">GMV目标</th><th class="num">订单目标</th><th class="num">CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">预算参考</th></tr>` +
+      document.getElementById("targetChannelResult").innerHTML = `<tr><th>月份</th><th>渠道</th><th>角色</th><th class="num">GMV占比</th><th class="num">GMV目标</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">预算参考</th></tr>` +
         t.channelRows.map(r => `<tr><td>${r.month}</td><td>${r.channel}</td><td>${r.role}</td><td class="num">${pct(r.share)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money0.format(r.orders)}</td><td class="num">${pct(r.ctr)}</td><td class="num">${pct(r.clickOrder)}</td><td class="num">${money0.format(r.clicks)}</td><td class="num">${money0.format(r.exposure)}</td><td class="num">${money(r.budget)}</td></tr>`).join("");
 
       document.getElementById("targetProductResult").innerHTML = `<tr><th>月份</th><th>单品</th><th>角色</th><th class="num">GMV权重</th><th class="num">GMV目标</th><th class="num">订单/销量目标</th></tr>` +
