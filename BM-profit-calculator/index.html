@@ -529,7 +529,7 @@
         <div class="panel">
           <h2>目标拆解参数</h2>
           <div class="panel-body">
-            <p class="note">这里先维护月份、渠道、产品的比重和漏斗目标；目标拆解页会直接读取项目总览 GMV 并自动分配。AOV 影响订单目标，点击成交率影响点击目标，CTR 影响曝光目标。</p>
+            <p class="note">这里先维护月份、场景、渠道、产品的比重和漏斗目标；目标拆解页会直接读取项目总览 GMV 并自动分配。AOV 由 SKU 价格、件单比和产品权重自动反推，点击成交率影响点击目标，CTR 影响曝光目标。</p>
             <h3 class="subhead">场景 GMV 占比</h3>
             <div class="scroll compact-scroll">
               <table class="sticky" id="scenarioInputs"></table>
@@ -558,7 +558,7 @@
         <h2>目标总控</h2>
         <div class="panel-body">
           <table id="targetOverviewInputs"></table>
-          <p class="note">本页只展示自动拆解结果；月份、渠道、产品比重和 AOV / CTR / 点击成交率请到“项目输入”页右侧维护。</p>
+          <p class="note">本页只展示自动拆解结果；月份、场景、渠道、产品比重和 CTR / 点击成交率请到“项目输入”页右侧维护，AOV 会由 SKU 数据自动反推。</p>
         </div>
       </div>
       <div class="panel" style="margin-top:12px">
@@ -753,7 +753,7 @@
       targetPlan: {
         name: "Q3目标拆解",
         totalGmv: 4000000,
-        note: "GMV=AOV×订单；订单=曝光×CTR×点击成交率；广告预算=GMV÷ROI",
+        note: "AOV由SKU用户实付价、件单比和产品权重自动反推；订单=GMV÷AOV；曝光=订单÷点击成交率÷CTR；广告预算=GMV÷ROI",
         months: [
           { name: "7月", stage: "正式运营首月：打开市场与口碑", gmvShare: 0.15, aov: 220, ctrRate: 0.05, clickOrderRate: 0.03, roi: 1.5 },
           { name: "8月", stage: "增长放大：核心IP与达人素材拉升", gmvShare: 0.35, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2 },
@@ -1582,6 +1582,35 @@
       if (m.gmv !== "" && m.gmv != null && fallbackTotal > 0) return num(m.gmv) / fallbackTotal;
       return 0;
     }
+    function normalizedScenarioWeightsForAov() {
+      const raw = scenarios.map(sc => Math.max(0, num(state.scenarioShares?.[sc])));
+      const total = raw.reduce((sum, v) => sum + v, 0);
+      return scenarios.map((scene, i) => ({
+        scene,
+        weight: total > 0 ? raw[i] / total : (i === 0 ? 1 : 0)
+      }));
+    }
+    function targetSkuAov(sku) {
+      if (!sku || sku.enabled === false) return 0;
+      const unitPerOrder = num(sku.unitPerOrder, 1) || 1;
+      let weightedAov = 0;
+      let totalWeight = 0;
+      normalizedScenarioWeightsForAov().forEach(({ scene, weight }) => {
+        if (weight <= 0) return;
+        const storeCoupon = effectiveStoreCoupon(sku, scene);
+        const afterStore = Math.max(0, num(sku.listPrice) - storeCoupon);
+        const cofund = matchCofund(sku, scene);
+        const userCofund = cofund ? cofund.userDiscount : 0;
+        const userPay = Math.max(0, afterStore - userCofund);
+        weightedAov += userPay * unitPerOrder * weight;
+        totalWeight += weight;
+      });
+      return totalWeight > 0 ? weightedAov / totalWeight : 0;
+    }
+    function targetProductAov(product) {
+      const sku = (state.skus || []).find(s => skuProductKey(s, 0) === product.sku || s.sku === product.sku || s.name === product.name);
+      return targetSkuAov(sku);
+    }
     function computeTargetPlan() {
       const plan = getTargetPlan();
       const targetProducts = syncTargetProductsFromSkus(plan);
@@ -1592,15 +1621,31 @@
       const months = plan.months.map((m, mi) => {
         const gmvShare = normalizedWeight(rawMonthWeights[mi], monthWeightTotal, plan.months.length);
         const gmv = totalTargetGmv * gmvShare;
-        const aov = num(m.aov);
         const ctr = num(m.ctrRate);
         const clickOrder = num(m.clickOrderRate);
         const roi = num(m.roi);
-        const orders = aov > 0 ? gmv / aov : 0;
-        const clicks = clickOrder > 0 ? orders / clickOrder : 0;
-        const exposure = ctr > 0 ? clicks / ctr : 0;
         const budget = roi > 0 ? gmv / roi : 0;
-        return { ...m, monthIndex: mi, gmvShare, gmv, aov, ctr, clickOrder, roi, orders, clicks, exposure, budget };
+        return { ...m, monthIndex: mi, gmvShare, gmv, aov: 0, ctr, clickOrder, roi, orders: 0, clicks: 0, exposure: 0, budget };
+      });
+      const productRows = [];
+      const productMonthOrders = months.map(() => 0);
+      const productWeightTotals = months.map((m, mi) => targetProducts.reduce((sum, p) => sum + num(p.weights?.[mi]), 0));
+      const productAovs = targetProducts.map(p => targetProductAov(p));
+      targetProducts.forEach((p, pi) => {
+        months.forEach((m, mi) => {
+          const weight = normalizedWeight(p.weights?.[mi], productWeightTotals[mi], targetProducts.length);
+          const gmv = m.gmv * weight;
+          const aov = productAovs[pi] || 0;
+          const orders = aov > 0 ? gmv / aov : 0;
+          productMonthOrders[mi] += orders;
+          productRows.push({ productIndex: pi, monthIndex: mi, month: m.name, product: p.name, role: p.role, weight, gmv, aov, orders });
+        });
+      });
+      months.forEach((m, mi) => {
+        m.orders = productMonthOrders[mi];
+        m.aov = m.orders > 0 ? m.gmv / m.orders : 0;
+        m.clicks = m.clickOrder > 0 ? m.orders / m.clickOrder : 0;
+        m.exposure = m.ctr > 0 ? m.clicks / m.ctr : 0;
       });
       const monthTotals = months.reduce((a, m) => {
         a.gmv += m.gmv; a.orders += m.orders; a.clicks += m.clicks; a.exposure += m.exposure; a.budget += m.budget;
@@ -1623,16 +1668,6 @@
           channelRows.push({ channelIndex: ci, monthIndex: mi, month: m.name, channel: ch.name, role: ch.role, share, gmv, aov: m.aov, ctr, clickOrder, orders, clicks, exposure, budget });
         });
       });
-      const productRows = [];
-      const productWeightTotals = months.map((m, mi) => targetProducts.reduce((sum, p) => sum + num(p.weights?.[mi]), 0));
-      targetProducts.forEach((p, pi) => {
-        months.forEach((m, mi) => {
-          const weight = normalizedWeight(p.weights?.[mi], productWeightTotals[mi], targetProducts.length);
-          const gmv = m.gmv * weight;
-          const orders = m.aov > 0 ? gmv / m.aov : 0;
-          productRows.push({ productIndex: pi, monthIndex: mi, month: m.name, product: p.name, role: p.role, weight, gmv, orders });
-        });
-      });
       return { plan, months, monthTotals, channelRows, productRows, targetProducts };
     }
     function renderTargetPlan() {
@@ -1653,13 +1688,13 @@
         <tr><td>拆解整体ROI</td><td class="calc-cell num">${ratio(t.monthTotals.roi)}</td></tr>
         <tr><td>测算口径说明</td><td class="calc-cell">${t.plan.note || "-"}</td></tr>`;
 
-      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">AOV（订单=GMV/AOV）</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率（订单/点击）</th><th class="num">ROI</th></tr>` +
+      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">自动AOV</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率（订单/点击）</th><th class="num">ROI</th></tr>` +
         t.plan.months.map((m, i) => `<tr>
           <td class="input-cell">${input(m.name, `targetPlan.months.${i}.name`, "text")}</td>
           <td class="input-cell">${input(m.stage, `targetPlan.months.${i}.stage`, "text")}</td>
           <td class="input-cell">${input(t.months[i]?.gmvShare ?? 0, `targetPlan.months.${i}.gmvShare`)}</td>
           <td class="calc-cell num">${money(t.months[i]?.gmv)}</td>
-          <td class="input-cell">${input(m.aov, `targetPlan.months.${i}.aov`)}</td>
+          <td class="calc-cell num">${money(t.months[i]?.aov)}</td>
           <td class="input-cell">${input(m.ctrRate, `targetPlan.months.${i}.ctrRate`)}</td>
           <td class="input-cell">${input(m.clickOrderRate, `targetPlan.months.${i}.clickOrderRate`)}</td>
           <td class="input-cell">${input(m.roi, `targetPlan.months.${i}.roi`)}</td>
@@ -1688,8 +1723,8 @@
       document.getElementById("targetChannelResult").innerHTML = `<tr><th>月份</th><th>渠道</th><th>角色</th><th class="num">GMV占比</th><th class="num">GMV目标</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">预算参考</th></tr>` +
         t.channelRows.map(r => `<tr><td>${r.month}</td><td>${r.channel}</td><td>${r.role}</td><td class="num">${pct(r.share)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money0.format(r.orders)}</td><td class="num">${pct(r.ctr)}</td><td class="num">${pct(r.clickOrder)}</td><td class="num">${money0.format(r.clicks)}</td><td class="num">${money0.format(r.exposure)}</td><td class="num">${money(r.budget)}</td></tr>`).join("");
 
-      document.getElementById("targetProductResult").innerHTML = `<tr><th>月份</th><th>单品</th><th>角色</th><th class="num">GMV权重</th><th class="num">GMV目标</th><th class="num">订单/销量目标</th></tr>` +
-        (t.productRows.length ? t.productRows.map(r => `<tr><td>${r.month}</td><td>${r.product}</td><td>${r.role}</td><td class="num">${pct(r.weight)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money0.format(r.orders)}</td></tr>`).join("") : `<tr><td colspan="6" class="calc-cell center">请先在“SKU 数据”页录入 SKU。</td></tr>`);
+      document.getElementById("targetProductResult").innerHTML = `<tr><th>月份</th><th>单品</th><th>角色</th><th class="num">GMV权重</th><th class="num">GMV目标</th><th class="num">自动AOV</th><th class="num">订单/销量目标</th></tr>` +
+        (t.productRows.length ? t.productRows.map(r => `<tr><td>${r.month}</td><td>${r.product}</td><td>${r.role}</td><td class="num">${pct(r.weight)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money(r.aov)}</td><td class="num">${money0.format(r.orders)}</td></tr>`).join("") : `<tr><td colspan="7" class="calc-cell center">请先在“SKU 数据”页录入 SKU。</td></tr>`);
     }
     function formatMixed(v) {
       if (v === null || v === undefined) return "不可达";
