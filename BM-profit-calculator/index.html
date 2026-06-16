@@ -753,7 +753,7 @@
       targetPlan: {
         name: "Q3目标拆解",
         totalGmv: 4000000,
-        note: "AOV由SKU用户实付价、件单比和产品权重自动反推；订单=GMV÷AOV；曝光=订单÷点击成交率÷CTR；广告预算=GMV÷ROI",
+        note: "AOV由SKU用户实付价、件单比和产品权重自动反推；订单=GMV÷AOV；曝光=订单÷点击成交率÷CTR；后台广告预算按GMV占比分配；广告后台ROI=GMV÷后台广告预算",
         months: [
           { name: "7月", stage: "正式运营首月：打开市场与口碑", gmvShare: 0.15, aov: 220, ctrRate: 0.05, clickOrderRate: 0.03, roi: 1.5 },
           { name: "8月", stage: "增长放大：核心IP与达人素材拉升", gmvShare: 0.35, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2 },
@@ -1623,8 +1623,8 @@
         const gmv = totalTargetGmv * gmvShare;
         const ctr = num(m.ctrRate);
         const clickOrder = num(m.clickOrderRate);
-        const roi = num(m.roi);
-        const budget = roi > 0 ? gmv / roi : 0;
+        const budget = num(state.project?.adSpend) * gmvShare;
+        const roi = budget > 0 ? gmv / budget : 0;
         return { ...m, monthIndex: mi, gmvShare, gmv, aov: 0, ctr, clickOrder, roi, orders: 0, clicks: 0, exposure: 0, budget };
       });
       const productRows = [];
@@ -1664,7 +1664,7 @@
           const orders = m.aov > 0 ? gmv / m.aov : 0;
           const clicks = clickOrder > 0 ? orders / clickOrder : 0;
           const exposure = ctr > 0 ? clicks / ctr : 0;
-          const budget = m.roi > 0 ? gmv / m.roi : 0;
+          const budget = m.budget * share;
           channelRows.push({ channelIndex: ci, monthIndex: mi, month: m.name, channel: ch.name, role: ch.role, share, gmv, aov: m.aov, ctr, clickOrder, orders, clicks, exposure, budget });
         });
       });
@@ -1676,7 +1676,7 @@
         ["拆解总GMV", money(t.monthTotals.gmv), "来自项目总览目标"],
         ["订单目标", money0.format(t.monthTotals.orders), `综合AOV ${money(t.monthTotals.aov)}`],
         ["曝光目标", money0.format(t.monthTotals.exposure), `点击 ${money0.format(t.monthTotals.clicks)}`],
-        ["广告预算", money(t.monthTotals.budget), `整体ROI ${ratio(t.monthTotals.roi)}`],
+        ["后台广告预算", money(t.monthTotals.budget), `广告后台ROI ${ratio(t.monthTotals.roi)}`],
         ["成本测算GMV", money(computeSummary().gmv), "与利润模型保持一致"]
       ].map(([l, v, sub]) => `<div class="kpi"><div class="label">${l}</div><div class="value">${v}</div><div class="sub">${sub}</div></div>`).join("");
 
@@ -1684,11 +1684,11 @@
         <tr><td>方案名称</td><td class="calc-cell">${t.plan.name || "-"}</td></tr>
         <tr><td>项目总览目标GMV</td><td class="calc-cell num">${money(num(state.project?.gmv))}</td></tr>
         <tr><td>当前拆解GMV</td><td class="calc-cell num">${money(t.monthTotals.gmv)}</td></tr>
-        <tr><td>拆解广告预算</td><td class="calc-cell num">${money(t.monthTotals.budget)}</td></tr>
-        <tr><td>拆解整体ROI</td><td class="calc-cell num">${ratio(t.monthTotals.roi)}</td></tr>
+        <tr><td>拆解后台广告预算</td><td class="calc-cell num">${money(t.monthTotals.budget)}</td></tr>
+        <tr><td>广告后台ROI</td><td class="calc-cell num">${ratio(t.monthTotals.roi)}</td></tr>
         <tr><td>测算口径说明</td><td class="calc-cell">${t.plan.note || "-"}</td></tr>`;
 
-      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">自动AOV</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率（订单/点击）</th><th class="num">ROI</th></tr>` +
+      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">自动AOV</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率（订单/点击）</th><th class="num">后台广告预算</th><th class="num">广告后台ROI</th></tr>` +
         t.plan.months.map((m, i) => `<tr>
           <td class="input-cell">${input(m.name, `targetPlan.months.${i}.name`, "text")}</td>
           <td class="input-cell">${input(m.stage, `targetPlan.months.${i}.stage`, "text")}</td>
@@ -1697,7 +1697,8 @@
           <td class="calc-cell num">${money(t.months[i]?.aov)}</td>
           <td class="input-cell">${input(m.ctrRate, `targetPlan.months.${i}.ctrRate`)}</td>
           <td class="input-cell">${input(m.clickOrderRate, `targetPlan.months.${i}.clickOrderRate`)}</td>
-          <td class="input-cell">${input(m.roi, `targetPlan.months.${i}.roi`)}</td>
+          <td class="calc-cell num">${money(t.months[i]?.budget)}</td>
+          <td class="calc-cell num">${ratio(t.months[i]?.roi)}</td>
         </tr>`).join("");
 
       document.getElementById("targetChannelInputs").innerHTML = `<tr><th>渠道</th><th>角色定位</th>${t.months.map(m => `<th class="num">${m.name} GMV占比</th>`).join("")}<th class="num">渠道曝光点击率CTR</th><th class="num">渠道点击成交率</th></tr>` +
@@ -1716,11 +1717,11 @@
           ${t.months.map((m, mi) => `<td class="input-cell">${input(p.weights?.[mi] ?? 0, `targetPlan.products.${i}.weights.${mi}`)}</td>`).join("")}
         </tr>`).join("") : `<tr><td colspan="${2 + t.months.length}" class="calc-cell center">请先在“SKU 数据”页录入 SKU，产品权重会自动带出。</td></tr>`);
 
-      document.getElementById("targetMonthlyResult").innerHTML = `<tr><th>月份</th><th>阶段</th><th class="num">GMV目标</th><th class="num">AOV</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">ROI</th><th class="num">广告预算</th></tr>` +
+      document.getElementById("targetMonthlyResult").innerHTML = `<tr><th>月份</th><th>阶段</th><th class="num">GMV目标</th><th class="num">AOV</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">广告后台ROI</th><th class="num">后台广告预算</th></tr>` +
         t.months.map(m => `<tr><td>${m.name}</td><td>${m.stage}</td><td class="num">${money(m.gmv)}</td><td class="num">${money(m.aov)}</td><td class="num">${money0.format(m.orders)}</td><td class="num">${pct(m.ctr)}</td><td class="num">${pct(m.clickOrder)}</td><td class="num">${money0.format(m.clicks)}</td><td class="num">${money0.format(m.exposure)}</td><td class="num">${ratio(m.roi)}</td><td class="num">${money(m.budget)}</td></tr>`).join("") +
         `<tr class="calc-cell"><td colspan="2">Q3合计</td><td class="num">${money(t.monthTotals.gmv)}</td><td class="num">${money(t.monthTotals.aov)}</td><td class="num">${money0.format(t.monthTotals.orders)}</td><td></td><td></td><td class="num">${money0.format(t.monthTotals.clicks)}</td><td class="num">${money0.format(t.monthTotals.exposure)}</td><td class="num">${ratio(t.monthTotals.roi)}</td><td class="num">${money(t.monthTotals.budget)}</td></tr>`;
 
-      document.getElementById("targetChannelResult").innerHTML = `<tr><th>月份</th><th>渠道</th><th>角色</th><th class="num">GMV占比</th><th class="num">GMV目标</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">预算参考</th></tr>` +
+      document.getElementById("targetChannelResult").innerHTML = `<tr><th>月份</th><th>渠道</th><th>角色</th><th class="num">GMV占比</th><th class="num">GMV目标</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">后台预算参考</th></tr>` +
         t.channelRows.map(r => `<tr><td>${r.month}</td><td>${r.channel}</td><td>${r.role}</td><td class="num">${pct(r.share)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money0.format(r.orders)}</td><td class="num">${pct(r.ctr)}</td><td class="num">${pct(r.clickOrder)}</td><td class="num">${money0.format(r.clicks)}</td><td class="num">${money0.format(r.exposure)}</td><td class="num">${money(r.budget)}</td></tr>`).join("");
 
       document.getElementById("targetProductResult").innerHTML = `<tr><th>月份</th><th>单品</th><th>角色</th><th class="num">GMV权重</th><th class="num">GMV目标</th><th class="num">自动AOV</th><th class="num">订单/销量目标</th></tr>` +
