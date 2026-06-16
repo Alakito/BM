@@ -529,7 +529,7 @@
         <div class="panel">
           <h2>目标拆解参数</h2>
           <div class="panel-body">
-            <p class="note">这里先维护月份、场景、渠道、产品的比重和漏斗目标；目标拆解页会直接读取项目总览 GMV 并自动分配。AOV 由 SKU 价格、件单比和产品权重自动反推，点击成交率影响点击目标，CTR 影响曝光目标。</p>
+            <p class="note">这里先维护月份、场景、渠道、产品的比重和漏斗目标；目标拆解页会直接读取项目总览 GMV 并自动分配。AOV 由 SKU 价格和产品权重自动反推，点击成交率影响点击目标，CTR 影响曝光目标。</p>
             <h3 class="subhead">场景 GMV 占比</h3>
             <div class="scroll compact-scroll">
               <table class="sticky" id="scenarioInputs"></table>
@@ -722,6 +722,7 @@
         returnProcessCost: 0,
         adSpend: 0,
         creatorBuying: 0,
+        sampleCostRate: 0,
         sampleCost: 0,
         otherCost: 0,
         agencyRate: 0,
@@ -753,7 +754,7 @@
       targetPlan: {
         name: "Q3目标拆解",
         totalGmv: 4000000,
-        note: "AOV由SKU用户实付价、件单比和产品权重自动反推；订单=GMV÷AOV；曝光=订单÷点击成交率÷CTR；后台广告预算按GMV占比分配；广告后台ROI=GMV÷后台广告预算",
+        note: "AOV由SKU用户实付价和产品权重自动反推；订单=GMV÷AOV；曝光=订单÷点击成交率÷CTR；后台广告预算按GMV占比分配；广告后台ROI=GMV÷后台广告预算",
         months: [
           { name: "7月", stage: "正式运营首月：打开市场与口碑", gmvShare: 0.15, aov: 220, ctrRate: 0.05, clickOrderRate: 0.03, roi: 1.5 },
           { name: "8月", stage: "增长放大：核心IP与达人素材拉升", gmvShare: 0.35, aov: 250, ctrRate: 0.05, clickOrderRate: 0.03, roi: 2 },
@@ -953,10 +954,13 @@
       const next = data || structuredClone(defaultState);
       const p = next.project || {};
       [
-        "returnRate", "nonResaleReturnRate", "agencyRate", "logisticsRate", "lossRate",
+        "returnRate", "nonResaleReturnRate", "sampleCostRate", "agencyRate", "logisticsRate", "lossRate",
         "platformCommissionRate", "transactionRate", "commerceGrowthRate", "bcdFlashRate",
         "resourcePackRate", "sfpRate", "voucherXtraRate", "creatorCommissionRate"
       ].forEach(k => { if (p[k] !== "" && p[k] != null) p[k] = normalizeRateNumber(p[k]); });
+      if (p.sampleCostRate == null || p.sampleCostRate === "") {
+        p.sampleCostRate = num(p.gmv) > 0 && num(p.sampleCost) > 0 ? num(p.sampleCost) / num(p.gmv) : 0;
+      }
       Object.keys(next.scenarioShares || {}).forEach(k => {
         next.scenarioShares[k] = normalizeRateNumber(next.scenarioShares[k]);
       });
@@ -1101,6 +1105,8 @@
           const platformSubsidyPerUnit = userCofund * (cofund ? num(cofund.platformShare) : 0);
           const userPay = Math.max(0, afterStore - userCofund);
           const settlementPerUnit = Math.max(0, afterStore - merchantCofund);
+          const originalPrice = num(sku.originalPrice, num(sku.listPrice));
+          const discountRate = originalPrice > 0 ? Math.max(0, 1 - userPay / originalPrice) : 0;
           const orderAov = userPay * num(sku.unitPerOrder);
           const orders = orderAov > 0 ? sceneGMV / orderAov : 0;
           const effectiveOrders = orders * (1 - num(p.returnRate));
@@ -1120,7 +1126,7 @@
           const sceneProfit = settlementIncome - sceneCost;
           rows.push({
             sku: sku.sku, name: sku.name, scene, skuShare, sceneShare, sceneGMV,
-            listPrice: num(sku.listPrice), storeCoupon, afterStore,
+            originalPrice, listPrice: num(sku.listPrice), storeCoupon, afterStore, discountRate,
             cofundName: cofund ? cofund.name : (scene === "大促" && sku.cofund ? "无可用券" : "不匹配"),
             userCofund, merchantCofund, platformSubsidyPerUnit, userPay, settlementPerUnit,
             orderAov, orders, effectiveOrders, units, effectiveUnits, settlementIncome,
@@ -1271,7 +1277,7 @@
       const agency = num(p.gmv) * num(p.agencyRate);
       const adSpend = num(p.adSpend);
       const creatorBuying = num(p.creatorBuying);
-      const sampleCost = num(p.sampleCost);
+      const sampleCost = num(p.gmv) * num(p.sampleCostRate);
       const otherCost = num(p.otherCost);
       const totalCost = adSpend + platformFee + creatorCommission + cogs + logistics + loss + creatorBuying + agency + sampleCost + otherCost;
       const profit = settlementIncome - totalCost;
@@ -1386,7 +1392,7 @@
         ["项目名称", "project.name", "text"], ["测算周期", "project.period", "text"],
         ["项目目标GMV/用户实付GMV", "project.gmv"], ["目标项目ROI", "project.targetROI"],
         ["退货率（小数，如25%=0.25）", "project.returnRate"], ["后台广告ROAS对应广告费", "project.adSpend"],
-        ["达人采买费用（含内容）", "project.creatorBuying"], ["样品成本", "project.sampleCost"],
+        ["达人采买费用（含内容）", "project.creatorBuying"], ["样品成本率（按GMV，小数，如2%=0.02）", "project.sampleCostRate"], ["自动样品成本", "__sampleCostAmount", "calc"],
         ["其他费用", "project.otherCost"], ["代运营服务费率（小数）", "project.agencyRate"],
         ["物流费率（小数）", "project.logisticsRate"], ["货损率（小数）", "project.lossRate"],
         ["平台基础设施费/单", "project.platformInfraPerOrder"], ["平台类目佣金率（小数）", "project.platformCommissionRate"],
@@ -1396,24 +1402,25 @@
         ["默认达人佣金率（小数）", "project.creatorCommissionRate"]
       ];
       document.getElementById("projectInputs").innerHTML = `<tr><th>字段</th><th>值</th></tr>` +
-        fields.map(([label, path, type = "number"]) => `<tr><td>${label}</td><td class="input-cell">${input(pathGet(path), path, type)}</td></tr>`).join("");
+        fields.map(([label, path, type = "number"]) => {
+          if (type === "calc") return `<tr><td>${label}</td><td class="calc-cell num">${money(num(p.gmv) * num(p.sampleCostRate))}</td></tr>`;
+          return `<tr><td>${label}</td><td class="input-cell">${input(pathGet(path), path, type)}</td></tr>`;
+        }).join("");
       document.getElementById("scenarioInputs").innerHTML = `<tr><th>场景</th><th>GMV占比（小数，如25%=0.25）</th></tr>` +
         scenarios.map(sc => `<tr><td>${sc}</td><td class="input-cell">${input(state.scenarioShares[sc], `scenarioShares.${sc}`)}</td></tr>`).join("");
     }
     function renderSku() {
       document.getElementById("skuTable").innerHTML = `<tr>
         <th style="width:95px">SKU</th><th style="width:160px">产品名</th><th class="center" style="width:70px">启用</th>
-        <th class="num">划线价</th><th class="num">到仓成本/件</th><th class="num">赠品成本/单</th><th class="num">件单比</th><th class="num">SKU销售占比（小数）</th>
+        <th class="num">原价</th><th class="num">划线价</th><th class="num">到仓成本/件</th>
         <th class="center">参与共资</th><th class="num">日常券</th><th class="num">小促券</th><th class="num">大促券</th><th class="center">操作</th></tr>` +
         state.skus.map((s, i) => `<tr>
           <td class="input-cell">${input(s.sku, `skus.${i}.sku`, "text")}</td>
           <td class="input-cell">${input(s.name, `skus.${i}.name`, "text")}</td>
           <td class="center input-cell">${input(s.enabled, `skus.${i}.enabled`, "checkbox")}</td>
+          <td class="input-cell">${input(s.originalPrice ?? "", `skus.${i}.originalPrice`)}</td>
           <td class="input-cell">${input(s.listPrice, `skus.${i}.listPrice`)}</td>
           <td class="input-cell">${input(s.cost, `skus.${i}.cost`)}</td>
-          <td class="input-cell">${input(s.giftCost ?? 0, `skus.${i}.giftCost`)}</td>
-          <td class="input-cell">${input(s.unitPerOrder, `skus.${i}.unitPerOrder`)}</td>
-          <td class="input-cell">${input(s.salesShare, `skus.${i}.salesShare`)}</td>
           <td class="center input-cell">${input(s.cofund, `skus.${i}.cofund`, "checkbox")}</td>
           <td class="input-cell">${input(s.coupons["日常"], `skus.${i}.coupons.日常`)}</td>
           <td class="input-cell">${input(s.coupons["小促"], `skus.${i}.coupons.小促`)}</td>
@@ -1439,16 +1446,16 @@
     function renderDetails(rows) {
       document.getElementById("detailTable").innerHTML = `<tr>
         <th>SKU</th><th>产品名</th><th>场景</th><th class="num">SKU销售占比</th><th class="num">场景GMV占比</th><th class="num">场景目标GMV</th>
-        <th class="num">划线价</th><th class="num">店铺券</th><th class="num">店铺券后价</th><th>匹配共资券</th>
+        <th class="num">原价</th><th class="num">划线价</th><th class="num">店铺券</th><th class="num">店铺券后价</th><th>匹配共资券</th>
         <th class="num">用户共资优惠/件</th><th class="num">商家承担/件</th><th class="num">平台补贴/件</th>
-        <th class="num">用户实付价/件</th><th class="num">结算收入/件</th><th class="num">AOV</th><th class="num">订单数</th>
+        <th class="num">用户实付价/件</th><th class="num">优惠力度</th><th class="num">结算收入/件</th><th class="num">AOV</th><th class="num">订单数</th>
         <th class="num">有效订单数</th><th class="num">结算收入</th><th class="num">平台扣费</th><th class="num">达人佣金</th>
         <th class="num">货品成本</th><th class="num">物流</th><th class="num">货损</th><th class="num">广告分摊</th><th class="num">达人采买分摊</th><th class="num">场景净利润</th></tr>` +
         rows.map(r => `<tr>
           <td>${r.sku}</td><td>${r.name}</td><td>${r.scene}</td><td class="num">${pct(r.skuShare)}</td><td class="num">${pct(r.sceneShare)}</td><td class="num">${money(r.sceneGMV)}</td>
-          <td class="num">${money(r.listPrice)}</td><td class="num">${money(r.storeCoupon)}</td><td class="num">${money(r.afterStore)}</td><td>${r.cofundName}</td>
+          <td class="num">${money(r.originalPrice)}</td><td class="num">${money(r.listPrice)}</td><td class="num">${money(r.storeCoupon)}</td><td class="num">${money(r.afterStore)}</td><td>${r.cofundName}</td>
           <td class="num">${money(r.userCofund)}</td><td class="num">${money(r.merchantCofund)}</td><td class="num">${money(r.platformSubsidyPerUnit)}</td>
-          <td class="num">${money(r.userPay)}</td><td class="num">${money(r.settlementPerUnit)}</td><td class="num">${money(r.orderAov)}</td><td class="num">${money(r.orders)}</td>
+          <td class="num">${money(r.userPay)}</td><td class="num">${pct(r.discountRate)}</td><td class="num">${money(r.settlementPerUnit)}</td><td class="num">${money(r.orderAov)}</td><td class="num">${money(r.orders)}</td>
           <td class="num">${money(r.effectiveOrders)}</td><td class="num">${money(r.settlementIncome)}</td><td class="num">${money(r.platformFee)}</td><td class="num">${money(r.creatorCommission)}</td>
           <td class="num">${money(r.cogs)}</td><td class="num">${money(r.logistics)}</td><td class="num">${money(r.loss)}</td><td class="num">${money(r.adAlloc)}</td><td class="num">${money(r.creatorBuyingAlloc)}</td><td class="num ${r.sceneProfit >= 0 ? "good" : "bad"}">${money(r.sceneProfit)}</td>
         </tr>`).join("");
@@ -1779,7 +1786,7 @@
     };
     document.getElementById("addSku").onclick = () => {
       if (!isEditing) return;
-      state.skus.push({ sku: "SKU" + String(state.skus.length + 1).padStart(3, "0"), name: "", enabled: true, listPrice: 0, cost: 0, giftCost: 0, unitPerOrder: 1, salesShare: 0, cofund: false, coupons: { "日常": 0, "小促": 0, "大促": 0 } });
+      state.skus.push({ sku: "SKU" + String(state.skus.length + 1).padStart(3, "0"), name: "", enabled: true, originalPrice: 0, listPrice: 0, cost: 0, giftCost: 0, unitPerOrder: 1, salesShare: 0, cofund: false, coupons: { "日常": 0, "小促": 0, "大促": 0 } });
       markDirty(); render();
     };
     document.getElementById("addCartDeal").onclick = () => {
