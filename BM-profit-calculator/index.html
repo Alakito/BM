@@ -1688,7 +1688,7 @@
         <tr><td>广告后台ROI</td><td class="calc-cell num">${ratio(t.monthTotals.roi)}</td></tr>
         <tr><td>测算口径说明</td><td class="calc-cell">${t.plan.note || "-"}</td></tr>`;
 
-      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">自动AOV</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率（订单/点击）</th><th class="num">后台广告预算</th><th class="num">广告后台ROI</th></tr>` +
+      document.getElementById("targetMonthInputs").innerHTML = `<tr><th>月份</th><th>阶段定位</th><th class="num">GMV占比</th><th class="num">自动拆解GMV</th><th class="num">自动AOV</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率（订单/点击）</th><th class="num">自动点击目标</th><th class="num">自动曝光目标</th><th class="num">后台广告预算</th><th class="num">广告后台ROI</th></tr>` +
         t.plan.months.map((m, i) => `<tr>
           <td class="input-cell">${input(m.name, `targetPlan.months.${i}.name`, "text")}</td>
           <td class="input-cell">${input(m.stage, `targetPlan.months.${i}.stage`, "text")}</td>
@@ -1697,6 +1697,8 @@
           <td class="calc-cell num">${money(t.months[i]?.aov)}</td>
           <td class="input-cell">${input(m.ctrRate, `targetPlan.months.${i}.ctrRate`)}</td>
           <td class="input-cell">${input(m.clickOrderRate, `targetPlan.months.${i}.clickOrderRate`)}</td>
+          <td class="calc-cell num">${money0.format(t.months[i]?.clicks || 0)}</td>
+          <td class="calc-cell num">${money0.format(t.months[i]?.exposure || 0)}</td>
           <td class="calc-cell num">${money(t.months[i]?.budget)}</td>
           <td class="calc-cell num">${ratio(t.months[i]?.roi)}</td>
         </tr>`).join("");
