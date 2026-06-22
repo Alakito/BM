@@ -1872,11 +1872,11 @@
     const cofundImportAliases = {
       name: ["券类型", "券名称", "共资券", "名称"],
       scene: ["场景", "活动场景"],
-      discountRate: ["折扣率", "优惠率", "折扣", "discountrate"],
+      discountRate: ["折扣率", "折扣率小数", "优惠率", "折扣", "discountrate"],
       threshold: ["门槛", "使用门槛", "threshold"],
       cap: ["封顶", "优惠封顶", "cap"],
-      platformShare: ["平台承担", "平台承担比例", "平台比例"],
-      merchantShare: ["商家承担", "商家承担比例", "商家比例"]
+      platformShare: ["平台承担", "平台承担小数", "平台承担比例", "平台比例"],
+      merchantShare: ["商家承担", "商家承担小数", "商家承担比例", "商家比例"]
     };
     function cofundImportFieldMap(headers) {
       const normalized = headers.map(normalizeSkuImportHeader);
@@ -1922,7 +1922,10 @@
           merchantShare
         };
       }).filter(Boolean);
-      const deduped = [...new Map(parsed.map(rule => [`${rule.scene}__${rule.name}`, rule])).values()];
+      const deduped = [...new Map(parsed.map(rule => [
+        `${rule.scene}__${rule.name}__${rule.threshold}__${rule.cap}`,
+        rule
+      ])).values()];
       if (!deduped.length) throw new Error("表格中没有可导入的共资券规则。");
       return { rows: deduped, sheetName: workbook.SheetNames[0] };
     }
