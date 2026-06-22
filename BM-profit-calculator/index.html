@@ -596,6 +596,7 @@
             <button class="small" id="downloadSkuTemplate">下载导入模板</button>
             <label class="file-label" for="skuImportFile">导入 SKU 表格</label>
             <input id="skuImportFile" type="file" accept=".xlsx,.xls,.csv">
+            <button class="small primary" id="saveSkuData">保存 SKU 数据</button>
             <span class="note" id="skuImportStatus">支持 Excel / CSV；导入后覆盖当前 SKU 列表。</span>
           </div>
           <div class="scroll">
@@ -621,6 +622,12 @@
           <div class="panel-body">
             <div class="actions" style="margin-bottom:8px">
               <button class="small" id="addCofund">新增共资券</button>
+              <button class="small" id="downloadCofundTemplate">下载券模板</button>
+              <label class="file-label" for="cofundImportFile">导入共资券</label>
+              <input id="cofundImportFile" type="file" accept=".xlsx,.xls,.csv">
+              <button class="small" id="exportCofundFile">导出共资券</button>
+              <button class="small primary" id="saveCofundData">保存共资券</button>
+              <span class="note" id="cofundImportStatus">支持 Excel / CSV；导入后覆盖当前规则。</span>
             </div>
             <p class="note">默认仅大促匹配共资券。以划线价匹配门槛，选择门槛内优惠金额最大的券，平台补贴进入结算收入。</p>
             <div class="scroll">
@@ -802,6 +809,7 @@
     }
     function saveState() {
       state = normalizeRateLikeFields(state);
+      state._updatedAt = new Date().toISOString();
       const projectId = currentProjectId();
       localStorage.setItem(storageKeyForProject(projectId), JSON.stringify(state));
       isDirty = false;
@@ -837,10 +845,10 @@
       cloudTimer = setTimeout(() => saveCloudData(false, projectId, snapshot), 800);
     }
     async function saveCloudData(showMessage = true, projectIdOverride = "", dataOverride = null) {
-      if (!sbClient) return setAuthStatus("云端未启用");
-      if (!currentUser) return setAuthStatus("请先登录");
+      if (!sbClient) { setAuthStatus("云端未启用"); return false; }
+      if (!currentUser) { setAuthStatus("请先登录"); return false; }
       const projectId = projectIdOverride || currentProjectId();
-      if (!projectId) return setAuthStatus("请先选择项目");
+      if (!projectId) { setAuthStatus("请先选择项目"); return false; }
       const payload = normalizeRateLikeFields(dataOverride ? structuredClone(dataOverride) : structuredClone(state));
       const { error } = await withTimeout(sbClient
         .from("calculator_project_states")
@@ -853,9 +861,22 @@
       if (error) {
         setAuthStatus("保存失败");
         if (showMessage) alert(error.message);
-        return;
+        return false;
       }
       setAuthStatus(showMessage ? "已保存到云端" : "已自动保存");
+      return true;
+    }
+    async function persistStateNow(label = "数据") {
+      saveState();
+      const projectId = currentProjectId();
+      if (currentUser && projectId) {
+        clearTimeout(cloudTimer);
+        const saved = await saveCloudData(false, projectId, structuredClone(state));
+        setAuthStatus(saved ? `${label}已保存并同步云端` : `${label}已保存到本机，云端同步失败`);
+        return saved;
+      }
+      setAuthStatus(`${label}已保存到本机`);
+      return true;
     }
     async function loadCloudData(user) {
       const projectId = currentProjectId();
@@ -867,6 +888,8 @@
       }
       const localKey = storageKeyForProject(projectId);
       const localBeforeLoad = localStorage.getItem(localKey);
+      let localState = null;
+      try { localState = localBeforeLoad ? sanitizeCloudData(JSON.parse(localBeforeLoad)) : null; } catch {}
       syncingCloud = true;
       setAuthStatus("读取云端...");
       const { data, error } = await withTimeout(sbClient
@@ -890,9 +913,18 @@
         return;
       }
       if (data?.data) {
-        state = sanitizeCloudData(data.data);
-        localStorage.setItem(localKey, JSON.stringify(state));
-        setAuthStatus("已加载当前项目数据");
+        const cloudState = sanitizeCloudData(data.data);
+        const localUpdated = Date.parse(localState?._updatedAt || "") || 0;
+        const cloudUpdated = Date.parse(cloudState?._updatedAt || "") || 0;
+        if (localState && localUpdated > cloudUpdated) {
+          state = localState;
+          await saveCloudData(false, projectId, state);
+          setAuthStatus("已恢复并同步本机最新数据");
+        } else {
+          state = cloudState;
+          localStorage.setItem(localKey, JSON.stringify(state));
+          setAuthStatus("已加载当前项目数据");
+        }
       } else {
         const { data: legacyData } = await withTimeout(sbClient
           .from("calculator_profiles")
@@ -1837,6 +1869,92 @@
       XLSX.utils.book_append_sheet(workbook, sheet, "SKU导入模板");
       XLSX.writeFile(workbook, "BM-SKU导入模板.xlsx");
     }
+    const cofundImportAliases = {
+      name: ["券类型", "券名称", "共资券", "名称"],
+      scene: ["场景", "活动场景"],
+      discountRate: ["折扣率", "优惠率", "折扣", "discountrate"],
+      threshold: ["门槛", "使用门槛", "threshold"],
+      cap: ["封顶", "优惠封顶", "cap"],
+      platformShare: ["平台承担", "平台承担比例", "平台比例"],
+      merchantShare: ["商家承担", "商家承担比例", "商家比例"]
+    };
+    function cofundImportFieldMap(headers) {
+      const normalized = headers.map(normalizeSkuImportHeader);
+      return Object.fromEntries(Object.entries(cofundImportAliases).map(([field, aliases]) => {
+        const candidates = aliases.map(normalizeSkuImportHeader);
+        return [field, normalized.findIndex(h => candidates.includes(h))];
+      }));
+    }
+    function cofundImportRate(row, index, fallback = 0) {
+      const raw = skuImportCell(row, index);
+      if (raw === "" || raw == null) return fallback;
+      const text = String(raw).trim();
+      if (text.endsWith("%")) return num(text.slice(0, -1)) / 100;
+      return normalizeRateNumber(num(raw, fallback));
+    }
+    function parseCofundWorkbook(buffer) {
+      if (typeof XLSX === "undefined") throw new Error("Excel 解析组件加载失败，请刷新页面后重试。");
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
+      const nameHeaders = cofundImportAliases.name.map(normalizeSkuImportHeader);
+      const headerIndex = matrix.findIndex(row => row.some(cell => nameHeaders.includes(normalizeSkuImportHeader(cell))));
+      if (headerIndex < 0) throw new Error("没有找到券类型列，请使用共资券模板。");
+      const fieldMap = cofundImportFieldMap(matrix[headerIndex]);
+      const parsed = matrix.slice(headerIndex + 1).map(row => {
+        const name = String(skuImportCell(row, fieldMap.name) ?? "").trim();
+        if (!name) return null;
+        const rawScene = String(skuImportCell(row, fieldMap.scene) || "大促").trim();
+        const scene = scenarios.includes(rawScene) ? rawScene : "大促";
+        const platformRaw = skuImportCell(row, fieldMap.platformShare);
+        const merchantRaw = skuImportCell(row, fieldMap.merchantShare);
+        let platformShare = cofundImportRate(row, fieldMap.platformShare, 0);
+        let merchantShare = cofundImportRate(row, fieldMap.merchantShare, 0);
+        if ((platformRaw === "" || platformRaw == null) && merchantShare > 0) platformShare = Math.max(0, 1 - merchantShare);
+        if ((merchantRaw === "" || merchantRaw == null) && platformShare > 0) merchantShare = Math.max(0, 1 - platformShare);
+        return {
+          name,
+          scene,
+          discountRate: cofundImportRate(row, fieldMap.discountRate, 0),
+          threshold: skuImportNumber(row, fieldMap.threshold, 0),
+          cap: skuImportNumber(row, fieldMap.cap, 0),
+          platformShare,
+          merchantShare
+        };
+      }).filter(Boolean);
+      const deduped = [...new Map(parsed.map(rule => [`${rule.scene}__${rule.name}`, rule])).values()];
+      if (!deduped.length) throw new Error("表格中没有可导入的共资券规则。");
+      return { rows: deduped, sheetName: workbook.SheetNames[0] };
+    }
+    function cofundWorkbookRows(rules = state.cofundRules || []) {
+      return rules.map(rule => ({
+        "券类型": rule.name,
+        "场景": rule.scene,
+        "折扣率（小数）": num(rule.discountRate),
+        "门槛": num(rule.threshold),
+        "封顶": num(rule.cap),
+        "平台承担（小数）": num(rule.platformShare),
+        "商家承担（小数）": num(rule.merchantShare)
+      }));
+    }
+    function writeCofundWorkbook(rows, filename) {
+      if (typeof XLSX === "undefined") return alert("Excel 组件尚未加载，请刷新页面后重试。");
+      const headers = ["券类型", "场景", "折扣率（小数）", "门槛", "封顶", "平台承担（小数）", "商家承担（小数）"];
+      const sheet = XLSX.utils.json_to_sheet(rows, { header: headers });
+      sheet["!cols"] = [22, 12, 18, 14, 14, 20, 20].map(wch => ({ wch }));
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, "共资券规则");
+      XLSX.writeFile(workbook, filename);
+    }
+    function downloadCofundTemplate() {
+      writeCofundWorkbook([{
+        "券类型": "12% off", "场景": "大促", "折扣率（小数）": 0.12,
+        "门槛": 199, "封顶": 200, "平台承担（小数）": 0.4, "商家承担（小数）": 0.6
+      }], "BM-共资券导入模板.xlsx");
+    }
+    function exportCofundWorkbook() {
+      writeCofundWorkbook(cofundWorkbookRows(), "BM-共资券规则.xlsx");
+    }
     function bindInputs() {
       document.querySelectorAll("[data-path]").forEach(el => {
         el.disabled = !isEditing;
@@ -1864,19 +1982,23 @@
         document.getElementById(btn.dataset.tab).classList.add("active");
       };
     });
-    document.getElementById("editSaveBtn").onclick = () => {
+    document.getElementById("editSaveBtn").onclick = async () => {
       if (!isEditing) {
         isEditing = true;
         updateEditUi();
         render();
         return;
       }
-      saveState();
+      await persistStateNow("数据");
       isEditing = false;
       updateEditUi();
       render();
     };
     document.getElementById("downloadSkuTemplate").onclick = downloadSkuTemplate;
+    document.getElementById("saveSkuData").onclick = async () => {
+      await persistStateNow("SKU数据");
+      document.getElementById("skuImportStatus").textContent = "SKU 数据已保存。";
+    };
     document.getElementById("skuImportFile").onchange = async e => {
       const file = e.target.files?.[0];
       const status = document.getElementById("skuImportStatus");
@@ -1889,9 +2011,36 @@
           return;
         }
         state.skus = result.rows;
-        saveState();
+        await persistStateNow("SKU数据");
         render();
-        document.getElementById("skuImportStatus").textContent = `导入成功：${result.rows.length} 个 SKU（工作表：${result.sheetName}）。`;
+        document.getElementById("skuImportStatus").textContent = `导入并保存成功：${result.rows.length} 个 SKU（工作表：${result.sheetName}）。`;
+      } catch (error) {
+        status.textContent = `导入失败：${error.message || error}`;
+      } finally {
+        e.target.value = "";
+      }
+    };
+    document.getElementById("downloadCofundTemplate").onclick = downloadCofundTemplate;
+    document.getElementById("exportCofundFile").onclick = exportCofundWorkbook;
+    document.getElementById("saveCofundData").onclick = async () => {
+      await persistStateNow("共资券规则");
+      document.getElementById("cofundImportStatus").textContent = "共资券规则已保存。";
+    };
+    document.getElementById("cofundImportFile").onchange = async e => {
+      const file = e.target.files?.[0];
+      const status = document.getElementById("cofundImportStatus");
+      if (!file) return;
+      status.textContent = "正在读取共资券表格...";
+      try {
+        const result = parseCofundWorkbook(await file.arrayBuffer());
+        if (state.cofundRules.length && !confirm(`将用表格中的 ${result.rows.length} 条规则覆盖当前 ${state.cofundRules.length} 条共资券规则，确认继续？`)) {
+          status.textContent = "已取消导入。";
+          return;
+        }
+        state.cofundRules = result.rows;
+        await persistStateNow("共资券规则");
+        render();
+        document.getElementById("cofundImportStatus").textContent = `导入并保存成功：${result.rows.length} 条规则（工作表：${result.sheetName}）。`;
       } catch (error) {
         status.textContent = `导入失败：${error.message || error}`;
       } finally {
