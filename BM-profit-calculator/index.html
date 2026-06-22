@@ -593,6 +593,10 @@
         <div class="panel-body">
           <div class="actions" style="margin-bottom:8px">
             <button class="small" id="addSku">新增 SKU</button>
+            <button class="small" id="downloadSkuTemplate">下载导入模板</button>
+            <label class="file-label" for="skuImportFile">导入 SKU 表格</label>
+            <input id="skuImportFile" type="file" accept=".xlsx,.xls,.csv">
+            <span class="note" id="skuImportStatus">支持 Excel / CSV；导入后覆盖当前 SKU 列表。</span>
           </div>
           <div class="scroll">
             <table class="sticky" id="skuTable"></table>
@@ -689,6 +693,7 @@
   </main>
 
   <script src="../assets/supabase-umd.js"></script>
+  <script src="./xlsx.full.min.js"></script>
   <script>
     const scenarios = ["日常", "小促", "大促"];
     const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -1745,6 +1750,93 @@
     function pathGet(path) {
       return path.split(".").reduce((obj, key) => obj?.[key], state);
     }
+    const skuImportAliases = {
+      sku: ["sku", "skuid", "商品sku", "商品skuid", "sku编号", "sku编码"],
+      name: ["产品名", "产品名称", "商品名", "商品名称", "sku简称", "简称"],
+      enabled: ["启用", "是否启用", "状态"],
+      originalPrice: ["原价", "商品原价", "前端原价"],
+      listPrice: ["划线价", "销售价", "商品价格", "价格"],
+      cost: ["到仓成本件", "到仓成本", "成本件", "货品成本", "商品成本"],
+      cofund: ["参与共资", "是否参与共资", "是否共资", "共资"],
+      dailyCoupon: ["日常券", "日常优惠券", "日常"],
+      smallCoupon: ["小促券", "小促优惠券", "小促"],
+      bigCoupon: ["大促券", "大促优惠券", "大促"]
+    };
+    function normalizeSkuImportHeader(value) {
+      return String(value ?? "").trim().toLowerCase().replace(/[\s_\-（）()\/\\]/g, "");
+    }
+    function skuImportFieldMap(headers) {
+      const normalized = headers.map(normalizeSkuImportHeader);
+      return Object.fromEntries(Object.entries(skuImportAliases).map(([field, aliases]) => {
+        const candidates = aliases.map(normalizeSkuImportHeader);
+        return [field, normalized.findIndex(h => candidates.includes(h))];
+      }));
+    }
+    function skuImportBoolean(value, fallback) {
+      if (value === "" || value == null) return fallback;
+      const normalized = String(value).trim().toLowerCase();
+      if (["0", "false", "否", "禁用", "未启用", "no", "n"].includes(normalized)) return false;
+      if (["1", "true", "是", "启用", "yes", "y"].includes(normalized)) return true;
+      return Boolean(value);
+    }
+    function skuImportCell(row, index) {
+      return index >= 0 ? row[index] : "";
+    }
+    function skuImportNumber(row, index, fallback = 0) {
+      const value = skuImportCell(row, index);
+      return value === "" || value == null ? fallback : num(value, fallback);
+    }
+    function parseSkuWorkbook(buffer) {
+      if (typeof XLSX === "undefined") throw new Error("Excel 解析组件加载失败，请刷新页面后重试。");
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false });
+      const skuHeaders = skuImportAliases.sku.map(normalizeSkuImportHeader);
+      const headerIndex = matrix.findIndex(row => row.some(cell => skuHeaders.includes(normalizeSkuImportHeader(cell))));
+      if (headerIndex < 0) throw new Error("没有找到 SKU 列，请使用导入模板或将表头命名为 SKU / SKUID。");
+      const fieldMap = skuImportFieldMap(matrix[headerIndex]);
+      const existingBySku = new Map((state.skus || []).map(s => [String(s.sku || "").trim(), s]));
+      const parsed = matrix.slice(headerIndex + 1).map(row => {
+        const sku = String(skuImportCell(row, fieldMap.sku) ?? "").trim();
+        if (!sku) return null;
+        const old = existingBySku.get(sku) || {};
+        const oldCoupons = old.coupons || {};
+        return {
+          ...old,
+          sku,
+          name: String(skuImportCell(row, fieldMap.name) || old.name || "").trim(),
+          enabled: skuImportBoolean(skuImportCell(row, fieldMap.enabled), old.enabled ?? true),
+          originalPrice: skuImportNumber(row, fieldMap.originalPrice, num(old.originalPrice)),
+          listPrice: skuImportNumber(row, fieldMap.listPrice, num(old.listPrice)),
+          cost: skuImportNumber(row, fieldMap.cost, num(old.cost)),
+          giftCost: num(old.giftCost),
+          unitPerOrder: num(old.unitPerOrder, 1) || 1,
+          salesShare: num(old.salesShare),
+          cofund: skuImportBoolean(skuImportCell(row, fieldMap.cofund), old.cofund ?? false),
+          coupons: {
+            "日常": skuImportNumber(row, fieldMap.dailyCoupon, num(oldCoupons["日常"])),
+            "小促": skuImportNumber(row, fieldMap.smallCoupon, num(oldCoupons["小促"])),
+            "大促": skuImportNumber(row, fieldMap.bigCoupon, num(oldCoupons["大促"]))
+          }
+        };
+      }).filter(Boolean);
+      const deduped = [...new Map(parsed.map(s => [s.sku, s])).values()];
+      if (!deduped.length) throw new Error("表格中没有可导入的 SKU 数据。");
+      return { rows: deduped, sheetName: workbook.SheetNames[0], sourceRows: parsed.length };
+    }
+    function downloadSkuTemplate() {
+      if (typeof XLSX === "undefined") return alert("Excel 组件尚未加载，请刷新页面后重试。");
+      const templateRows = [{
+        "SKU": "SKU001", "产品名": "示例产品", "启用": "是", "原价": 399,
+        "划线价": 349, "到仓成本/件": 46, "参与共资": "否",
+        "日常券": 0, "小促券": 20, "大促券": 50
+      }];
+      const workbook = XLSX.utils.book_new();
+      const sheet = XLSX.utils.json_to_sheet(templateRows);
+      sheet["!cols"] = [12, 20, 10, 12, 12, 16, 12, 12, 12, 12].map(wch => ({ wch }));
+      XLSX.utils.book_append_sheet(workbook, sheet, "SKU导入模板");
+      XLSX.writeFile(workbook, "BM-SKU导入模板.xlsx");
+    }
     function bindInputs() {
       document.querySelectorAll("[data-path]").forEach(el => {
         el.disabled = !isEditing;
@@ -1783,6 +1875,28 @@
       isEditing = false;
       updateEditUi();
       render();
+    };
+    document.getElementById("downloadSkuTemplate").onclick = downloadSkuTemplate;
+    document.getElementById("skuImportFile").onchange = async e => {
+      const file = e.target.files?.[0];
+      const status = document.getElementById("skuImportStatus");
+      if (!file) return;
+      status.textContent = "正在读取表格...";
+      try {
+        const result = parseSkuWorkbook(await file.arrayBuffer());
+        if (state.skus.length && !confirm(`将用表格中的 ${result.rows.length} 个 SKU 覆盖当前 ${state.skus.length} 个 SKU，确认继续？`)) {
+          status.textContent = "已取消导入。";
+          return;
+        }
+        state.skus = result.rows;
+        saveState();
+        render();
+        document.getElementById("skuImportStatus").textContent = `导入成功：${result.rows.length} 个 SKU（工作表：${result.sheetName}）。`;
+      } catch (error) {
+        status.textContent = `导入失败：${error.message || error}`;
+      } finally {
+        e.target.value = "";
+      }
     };
     document.getElementById("addSku").onclick = () => {
       if (!isEditing) return;
