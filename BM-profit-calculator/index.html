@@ -52,6 +52,44 @@
       letter-spacing: 0;
     }
     .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+    .analysis-filters {
+      display: flex;
+      gap: 8px;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+    .analysis-filters label {
+      display: grid;
+      gap: 4px;
+      min-width: 140px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .analysis-filters .search-filter { min-width: 220px; }
+    .analysis-filters .toggle-filter {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 31px;
+      padding: 5px 9px;
+      border: 1px solid #b9c8d5;
+      border-radius: 6px;
+      background: #fff;
+      color: var(--ink);
+      font-weight: 700;
+    }
+    .analysis-filters .toggle-filter input { width: auto; }
+    .sort-button {
+      width: 100%;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      color: inherit;
+      font-weight: 700;
+      text-align: inherit;
+      white-space: normal;
+    }
+    .sort-button:hover { color: #2563eb; }
     .auth-box {
       display: flex;
       gap: 6px;
@@ -494,7 +532,7 @@
       <button class="tab" data-tab="rules">券规则</button>
       <button class="tab" data-tab="details">场景明细</button>
       <button class="tab" data-tab="cartDeals">凑单订单</button>
-      <button class="tab" data-tab="unitSpace">单品投流空间</button>
+      <button class="tab" data-tab="unitSpace">利润空间测算</button>
       <button class="tab" data-tab="optimize">优化模拟</button>
     </div>
 
@@ -651,9 +689,9 @@
 
     <section id="unitSpace" class="view">
       <div class="panel">
-        <h2>单品促销机制投流空间</h2>
+        <h2>利润空间测算</h2>
         <div class="panel-body">
-          <p class="note">计算口径：成本费率 =（到仓成本/件 + 平台基础设施费/单 + 赠品成本/单） ÷ 收入计算基准；收入计算基准 = 用户实付价 + 平台共资补贴；投流空间 = 1 - 成本费率 - 平台总费率 - 达人佣金率 - 货损率；单品保本ROI = 1 ÷ 投流空间。</p>
+          <p class="note">计算口径：毛利率 =（收入计算基准 - 成本合计/件）÷ 收入计算基准；投流空间 = 毛利率 - 平台总费率 - 达人佣金率 - 货损率；单品保本ROI = 1 ÷ 投流空间。关闭共资开关后，所有行会忽略共资券并立即重算。</p>
           <div class="actions" id="unitSpaceControls" style="margin-bottom:8px"></div>
           <div class="scroll">
             <table class="sticky" id="unitSpaceTable"></table>
@@ -751,7 +789,7 @@
         creatorCommissionRate: 0
       },
       scenarioShares: { "日常": 0, "小促": 0, "大促": 0 },
-      unitSpace: { sceneFilter: "全部", adjustments: {} },
+      unitSpace: { sceneFilter: "全部", search: "", statusFilter: "全部", cofundEnabled: true, sortKey: "sku", sortDir: "asc", adjustments: {} },
       skus: [],
       storeCoupon: { newUser: 0 },
       cartDeals: [],
@@ -1118,12 +1156,28 @@
     function unitAdjustmentKey(sku, scene) {
       return `${sku.sku}__${scene}`;
     }
+    function unitSpaceState() {
+      if (!state.unitSpace) state.unitSpace = {};
+      const defaults = {
+        sceneFilter: "全部",
+        search: "",
+        statusFilter: "全部",
+        cofundEnabled: true,
+        sortKey: "sku",
+        sortDir: "asc",
+        adjustments: {}
+      };
+      Object.entries(defaults).forEach(([key, value]) => {
+        if (state.unitSpace[key] == null) state.unitSpace[key] = value;
+      });
+      return state.unitSpace;
+    }
     function unitAdjustment(sku, scene) {
-      if (!state.unitSpace) state.unitSpace = { sceneFilter: "全部", adjustments: {} };
-      if (!state.unitSpace.adjustments) state.unitSpace.adjustments = {};
+      const unitState = unitSpaceState();
+      if (!unitState.adjustments) unitState.adjustments = {};
       const key = unitAdjustmentKey(sku, scene);
-      if (!state.unitSpace.adjustments[key]) state.unitSpace.adjustments[key] = { mechanism: "", giftCost: "" };
-      return state.unitSpace.adjustments[key];
+      if (!unitState.adjustments[key]) unitState.adjustments[key] = { mechanism: "", giftCost: "" };
+      return unitState.adjustments[key];
     }
     function computeDetails() {
       const shares = normalizeShares();
@@ -1177,7 +1231,8 @@
     function computeUnitSpaces() {
       const p = state.project;
       const feeRate = platformRate();
-      const sceneFilter = state.unitSpace?.sceneFilter || "全部";
+      const unitState = unitSpaceState();
+      const sceneFilter = unitState.sceneFilter;
       const rows = [];
       for (const sku of state.skus.filter(s => s.enabled)) {
         for (const scene of scenarios) {
@@ -1185,7 +1240,7 @@
           const adj = unitAdjustment(sku, scene);
           const storeCoupon = effectiveStoreCoupon(sku, scene);
           const afterStore = Math.max(0, num(sku.listPrice) - storeCoupon);
-          const cofund = matchCofund(sku, scene);
+          const cofund = unitState.cofundEnabled ? matchCofund(sku, scene) : null;
           const userCofund = cofund ? cofund.userDiscount : 0;
           const merchantCofund = userCofund * (cofund ? num(cofund.merchantShare) : 0);
           const platformSubsidyPerUnit = userCofund * (cofund ? num(cofund.platformShare) : 0);
@@ -1195,7 +1250,9 @@
           const giftCost = adj.giftCost === "" ? 0 : num(adj.giftCost);
           const baseCost = num(sku.cost) + num(p.platformInfraPerOrder) + giftCost;
           const costRate = settlementPerUnit > 0 ? baseCost / settlementPerUnit : 0;
-          const adSpace = settlementPerUnit > 0 ? 1 - costRate - feeRate - creatorRate - num(p.lossRate) : 0;
+          const grossMargin = settlementPerUnit > 0 ? 1 - costRate : 0;
+          const adSpace = settlementPerUnit > 0 ? grossMargin - feeRate - creatorRate - num(p.lossRate) : 0;
+          const status = adSpace > 0.2 ? "空间充足" : adSpace > 0 ? "空间偏窄" : "不可投";
           rows.push({
             sku: sku.sku,
             name: sku.name,
@@ -1205,7 +1262,8 @@
             listPrice: num(sku.listPrice),
             storeCoupon,
             afterStore,
-            cofundName: cofund ? cofund.name : (scene === "大促" && sku.cofund ? "无可用券" : "不匹配"),
+            cofundName: cofund ? cofund.name : !unitState.cofundEnabled ? "未参与" : (scene === "大促" && sku.cofund ? "无可用券" : "不匹配"),
+            cofundApplied: Boolean(cofund),
             userCofund,
             merchantCofund,
             platformSubsidyPerUnit,
@@ -1217,15 +1275,31 @@
             giftCostInput: adj.giftCost ?? "",
             baseCost,
             costRate,
+            grossMargin,
             platformRate: feeRate,
             creatorRate,
             lossRate: num(p.lossRate),
             adSpace,
-            breakevenRoi: adSpace > 0 ? 1 / adSpace : null
+            breakevenRoi: adSpace > 0 ? 1 / adSpace : null,
+            status
           });
         }
       }
-      return rows;
+      const search = String(unitState.search || "").trim().toLowerCase();
+      const filtered = rows.filter(row => {
+        if (search && ![row.sku, row.name, row.mechanism, row.cofundName].some(v => String(v || "").toLowerCase().includes(search))) return false;
+        if (unitState.statusFilter !== "全部" && row.status !== unitState.statusFilter) return false;
+        return true;
+      });
+      const direction = unitState.sortDir === "desc" ? -1 : 1;
+      const key = unitState.sortKey || "sku";
+      filtered.sort((a, b) => {
+        const av = a[key];
+        const bv = b[key];
+        if (typeof av === "number" || typeof bv === "number") return (num(av) - num(bv)) * direction;
+        return String(av ?? "").localeCompare(String(bv ?? ""), "zh-CN", { numeric: true }) * direction;
+      });
+      return filtered;
     }
     function computeCartDeals() {
       const p = state.project;
@@ -1535,18 +1609,26 @@
           </tr>`;
         }).join("");
     }
-    function renderUnitSpace(rows) {
-      document.getElementById("unitSpaceControls").innerHTML =
-        `<label>场景筛选 ${select(state.unitSpace?.sceneFilter || "全部", "unitSpace.sceneFilter", ["全部", "日常", "小促", "大促"])}</label>`;
-      document.getElementById("unitSpaceTable").innerHTML = `<tr>
-        <th>SKU</th><th>产品名</th><th>场景</th><th>活动机制</th>
-        <th class="num">划线价</th><th class="num">店铺券</th><th class="num">店铺券后价</th><th>匹配共资券</th>
-        <th class="num">用户共资优惠/件</th><th class="num">商家承担/件</th><th class="num">平台补贴/件</th><th class="num">券后到手价</th><th class="num">收入计算基准</th>
-        <th class="num">到仓成本/件</th><th class="num">平台基础设施费/单</th><th class="num">赠品成本/单</th><th class="num">成本合计/件</th>
-        <th class="num">成本费率</th><th class="num">平台总费率</th><th class="num">达人佣金率</th><th class="num">货损率</th>
-        <th class="num">可投流空间</th><th class="num">单品保本ROI</th><th>状态</th></tr>` +
-        rows.map(r => {
-          const status = r.adSpace > 0.2 ? "空间充足" : r.adSpace > 0 ? "空间偏窄" : "不可投";
+    const unitSpaceColumns = [
+      ["sku", "SKU"], ["name", "产品名"], ["scene", "场景"], ["mechanism", "活动机制"],
+      ["listPrice", "划线价", true], ["storeCoupon", "店铺券", true], ["afterStore", "店铺券后价", true], ["cofundName", "匹配共资券"],
+      ["userCofund", "用户共资优惠/件", true], ["merchantCofund", "商家承担/件", true], ["platformSubsidyPerUnit", "平台补贴/件", true],
+      ["userPay", "券后到手价", true], ["settlementPerUnit", "收入计算基准", true], ["cost", "到仓成本/件", true],
+      ["infra", "平台基础设施费/单", true], ["giftCost", "赠品成本/单", true], ["baseCost", "成本合计/件", true],
+      ["costRate", "成本费率", true], ["grossMargin", "毛利率", true], ["platformRate", "平台总费率", true],
+      ["creatorRate", "达人佣金率", true], ["lossRate", "货损率", true], ["adSpace", "可投流空间", true],
+      ["breakevenRoi", "单品保本ROI", true], ["status", "状态"]
+    ];
+    function unitSpaceHeaderHtml(column) {
+      const [key, label, numeric] = column;
+      const unitState = unitSpaceState();
+      const indicator = unitState.sortKey === key ? (unitState.sortDir === "desc" ? " ↓" : " ↑") : "";
+      return `<th class="${numeric ? "num" : ""}"><button class="sort-button" data-unit-sort="${key}" title="按${label}排序">${label}${indicator}</button></th>`;
+    }
+    function renderUnitSpaceTable(rows) {
+      const table = document.getElementById("unitSpaceTable");
+      table.innerHTML = `<tr>${unitSpaceColumns.map(unitSpaceHeaderHtml).join("")}</tr>` +
+        (rows.length ? rows.map(r => {
           const cls = r.adSpace > 0.2 ? "good" : r.adSpace > 0 ? "mid" : "bad";
           const mechanismPath = `unitSpace.adjustments.${r.adjustmentKey}.mechanism`;
           const giftPath = `unitSpace.adjustments.${r.adjustmentKey}.giftCost`;
@@ -1555,10 +1637,55 @@
             <td class="num">${money(r.listPrice)}</td><td class="num">${money(r.storeCoupon)}</td><td class="num">${money(r.afterStore)}</td><td>${r.cofundName}</td>
             <td class="num">${money(r.userCofund)}</td><td class="num">${money(r.merchantCofund)}</td><td class="num">${money(r.platformSubsidyPerUnit)}</td><td class="num">${money(r.userPay)}</td><td class="num">${money(r.settlementPerUnit)}</td>
             <td class="num">${money(r.cost)}</td><td class="num">${money(r.infra)}</td><td class="input-cell">${input(r.giftCostInput, giftPath)}</td><td class="num">${money(r.baseCost)}</td>
-            <td class="num">${pct(r.costRate)}</td><td class="num">${pct(r.platformRate)}</td><td class="num">${pct(r.creatorRate)}</td><td class="num">${pct(r.lossRate)}</td>
-            <td class="num ${cls}">${pct(r.adSpace)}</td><td class="num">${r.breakevenRoi ? ratio(r.breakevenRoi) : "不可投"}</td><td class="${cls}">${status}</td>
+            <td class="num">${pct(r.costRate)}</td><td class="num">${pct(r.grossMargin)}</td><td class="num">${pct(r.platformRate)}</td><td class="num">${pct(r.creatorRate)}</td><td class="num">${pct(r.lossRate)}</td>
+            <td class="num ${cls}">${pct(r.adSpace)}</td><td class="num">${r.breakevenRoi ? ratio(r.breakevenRoi) : "不可投"}</td><td class="${cls}">${r.status}</td>
           </tr>`;
-        }).join("");
+        }).join("") : `<tr><td colspan="${unitSpaceColumns.length}" class="calc-cell center">没有符合当前筛选条件的数据。</td></tr>`);
+      const count = document.getElementById("unitSpaceResultCount");
+      if (count) count.textContent = `当前 ${rows.length} 行`;
+      table.querySelectorAll("[data-unit-sort]").forEach(button => {
+        button.onclick = () => {
+          const unitState = unitSpaceState();
+          const key = button.dataset.unitSort;
+          unitState.sortDir = unitState.sortKey === key && unitState.sortDir === "asc" ? "desc" : "asc";
+          unitState.sortKey = key;
+          renderUnitSpaceTable(computeUnitSpaces());
+          bindInputs();
+        };
+      });
+    }
+    function renderUnitSpace(rows) {
+      const unitState = unitSpaceState();
+      const escapedSearch = String(unitState.search || "").replaceAll('"', "&quot;");
+      document.getElementById("unitSpaceControls").innerHTML = `<div class="analysis-filters">
+        <label class="search-filter">搜索 SKU / 产品 / 活动 / 共资券<input id="unitSpaceSearch" type="search" value="${escapedSearch}" placeholder="输入关键词筛选"></label>
+        <label>场景<select id="unitSpaceSceneFilter">${["全部", "日常", "小促", "大促"].map(v => `<option ${v === unitState.sceneFilter ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label>空间状态<select id="unitSpaceStatusFilter">${["全部", "空间充足", "空间偏窄", "不可投"].map(v => `<option ${v === unitState.statusFilter ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+        <label class="toggle-filter"><input id="unitSpaceCofundToggle" type="checkbox" ${unitState.cofundEnabled ? "checked" : ""}>参与共资券测算</label>
+        <span class="note" id="unitSpaceResultCount"></span>
+      </div>`;
+      renderUnitSpaceTable(rows);
+      document.getElementById("unitSpaceSearch").oninput = e => {
+        unitSpaceState().search = e.target.value;
+        renderUnitSpaceTable(computeUnitSpaces());
+        bindInputs();
+      };
+      document.getElementById("unitSpaceSceneFilter").onchange = e => {
+        unitSpaceState().sceneFilter = e.target.value;
+        renderUnitSpaceTable(computeUnitSpaces());
+        bindInputs();
+      };
+      document.getElementById("unitSpaceStatusFilter").onchange = e => {
+        unitSpaceState().statusFilter = e.target.value;
+        renderUnitSpaceTable(computeUnitSpaces());
+        bindInputs();
+      };
+      document.getElementById("unitSpaceCofundToggle").onchange = e => {
+        unitSpaceState().cofundEnabled = e.target.checked;
+        saveState();
+        renderUnitSpaceTable(computeUnitSpaces());
+        bindInputs();
+      };
     }
     function renderOptimization(s) {
       const gap = s.gapToTarget;
