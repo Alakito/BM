@@ -1151,6 +1151,7 @@
         obj = obj[key];
       }
       obj[parts.at(-1)] = isCheckbox ? value : (value === "" ? "" : (isNaN(Number(value)) ? value : Number(value)));
+      if (path.endsWith(".skuRef")) syncGiftPlanSkuFromRef(path, value);
       markDirty();
       render();
     }
@@ -1245,6 +1246,27 @@
     function makeLocalId(prefix) {
       return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     }
+    function giftSkuRef(sku) {
+      return JSON.stringify([String(sku?.sku || ""), String(sku?.name || "")]);
+    }
+    function resolveGiftPlanSku(plan) {
+      const enabledSkus = state.skus.filter(item => item.enabled);
+      if (plan.skuRef) return enabledSkus.find(item => giftSkuRef(item) === plan.skuRef) || null;
+      if (plan.skuName) {
+        return enabledSkus.find(item => item.sku === plan.sku && item.name === plan.skuName) || null;
+      }
+      const legacyMatches = enabledSkus.filter(item => item.sku === plan.sku);
+      return legacyMatches.length === 1 ? legacyMatches[0] : null;
+    }
+    function syncGiftPlanSkuFromRef(path, skuRef) {
+      const match = path.match(/^giftMechanism\.plans\.(\d+)\.skuRef$/);
+      if (!match) return;
+      const plan = giftMechanismState().plans[Number(match[1])];
+      const sku = state.skus.find(item => item.enabled && giftSkuRef(item) === skuRef);
+      if (!plan) return;
+      plan.sku = sku?.sku || "";
+      plan.skuName = sku?.name || "";
+    }
     function computeDetails() {
       const shares = normalizeShares();
       const rows = [];
@@ -1282,7 +1304,7 @@
           const sceneCost = platformFee + creatorCommission + cogs + logistics + loss + adAlloc + creatorBuyingAlloc;
           const sceneProfit = settlementIncome - sceneCost;
           rows.push({
-            sku: sku.sku, name: sku.name, scene, skuShare, sceneShare, sceneGMV,
+            sku: sku.sku, name: sku.name, skuRef: giftSkuRef(sku), scene, skuShare, sceneShare, sceneGMV,
             originalPrice, listPrice: num(sku.listPrice), storeCoupon, afterStore, discountRate,
             cofundName: cofund ? cofund.name : (scene === "大促" && sku.cofund ? "无可用券" : "不匹配"),
             userCofund, merchantCofund, platformSubsidyPerUnit, userPay, settlementPerUnit,
@@ -1371,18 +1393,17 @@
       const mechanismState = giftMechanismState();
       const p = state.project;
       const feeRate = platformRate();
+      const detailRows = computeDetails();
       return mechanismState.plans.filter(plan => plan.enabled !== false).map(plan => {
-        const sku = state.skus.find(item => item.sku === plan.sku && item.enabled);
+        const sku = resolveGiftPlanSku(plan);
         const gift = mechanismState.gifts.find(item => item.id === plan.giftId && item.enabled !== false);
         if (!sku || !gift) return null;
         const scene = scenarios.includes(plan.scene) ? plan.scene : "日常";
-        const storeCoupon = effectiveStoreCoupon(sku, scene);
-        const afterStore = Math.max(0, num(sku.listPrice) - storeCoupon);
-        const cofund = matchCofundByAmount(num(sku.listPrice), scene, plan.cofund !== false);
-        const userCofund = cofund ? cofund.userDiscount : 0;
-        const merchantCofund = userCofund * (cofund ? num(cofund.merchantShare) : 0);
-        const userPayPerUnit = Math.max(0, afterStore - userCofund);
-        const settlementPerUnit = Math.max(0, afterStore - merchantCofund);
+        const detailRow = detailRows.find(row => row.skuRef === giftSkuRef(sku) && row.scene === scene);
+        if (!detailRow) return null;
+        const cofundEnabled = plan.cofund !== false;
+        const userPayPerUnit = cofundEnabled ? detailRow.userPay : detailRow.afterStore;
+        const settlementPerUnit = cofundEnabled ? detailRow.settlementPerUnit : detailRow.afterStore;
         const unitsPerOrder = Math.max(1, num(sku.unitPerOrder, 1));
         const userPayPerOrder = userPayPerUnit * unitsPerOrder;
         const settlementPerOrder = settlementPerUnit * unitsPerOrder;
@@ -1410,7 +1431,10 @@
           sku,
           gift,
           scene,
-          cofundName: plan.cofund === false ? "未参与" : (cofund ? cofund.name : (scene === "大促" ? "无可用券" : "场景不适用")),
+          cofundName: cofundEnabled ? detailRow.cofundName : "未参与",
+          userPayPerUnit,
+          settlementPerUnit,
+          unitsPerOrder,
           userPayPerOrder,
           settlementPerOrder,
           baseProfitPerOrder,
@@ -1821,7 +1845,7 @@
     function renderGiftMechanism() {
       const mechanismState = giftMechanismState();
       const skuOptions = state.skus.filter(sku => sku.enabled).map(sku => ({
-        value: sku.sku,
+        value: giftSkuRef(sku),
         label: `${sku.sku} / ${sku.name || "未命名产品"}`
       }));
       const giftOptions = mechanismState.gifts.filter(gift => gift.enabled !== false).map(gift => ({
@@ -1842,18 +1866,21 @@
         <th>机制名称</th><th class="center">启用</th><th>SKU / 产品</th><th>场景</th><th>赠品</th>
         <th class="num">每单赠品数</th><th class="num">计划赠品数量</th><th class="num">预计核销率</th><th class="center">参与共资券</th><th>联动状态</th><th class="center">操作</th></tr>` +
         (mechanismState.plans.length ? mechanismState.plans.map((plan, index) => {
-          const ready = skuOptions.some(item => item.value === plan.sku) && giftOptions.some(item => item.value === plan.giftId);
+          const selectedSku = resolveGiftPlanSku(plan);
+          const selectedSkuRef = selectedSku ? giftSkuRef(selectedSku) : (plan.skuRef || "");
+          const ready = Boolean(selectedSku) && giftOptions.some(item => item.value === plan.giftId);
+          const statusText = ready ? "已按 SKU + 产品名联动" : (plan.sku ? "同 SKU 可能有多个产品，请重新选择" : "待选择 SKU / 赠品");
           return `<tr>
             <td class="input-cell">${input(plan.name, `giftMechanism.plans.${index}.name`, "text")}</td>
             <td class="center input-cell">${input(plan.enabled !== false, `giftMechanism.plans.${index}.enabled`, "checkbox")}</td>
-            <td class="input-cell">${labeledSelect(plan.sku, `giftMechanism.plans.${index}.sku`, skuOptions, "选择 SKU")}</td>
+            <td class="input-cell">${labeledSelect(selectedSkuRef, `giftMechanism.plans.${index}.skuRef`, skuOptions, "选择 SKU + 产品名")}</td>
             <td class="input-cell">${select(plan.scene || "日常", `giftMechanism.plans.${index}.scene`, scenarios)}</td>
             <td class="input-cell">${labeledSelect(plan.giftId, `giftMechanism.plans.${index}.giftId`, giftOptions, "选择赠品")}</td>
             <td class="input-cell">${input(plan.giftQtyPerOrder, `giftMechanism.plans.${index}.giftQtyPerOrder`, "number", "1")}</td>
             <td class="input-cell">${input(plan.plannedGiftQty, `giftMechanism.plans.${index}.plannedGiftQty`, "number", "1")}</td>
             <td class="input-cell">${input(plan.utilizationRate, `giftMechanism.plans.${index}.utilizationRate`)}</td>
             <td class="center input-cell">${input(plan.cofund !== false, `giftMechanism.plans.${index}.cofund`, "checkbox")}</td>
-            <td class="${ready ? "good" : "mid"}">${ready ? "已联动" : "待选择 SKU / 赠品"}</td>
+            <td class="${ready ? "good" : "mid"}">${statusText}</td>
             <td class="center"><button class="small danger" data-remove-gift-plan="${index}">删除</button></td>
           </tr>`;
         }).join("") : `<tr><td colspan="11" class="calc-cell center">新增活动方案后，系统会自动联动 SKU 场景利润。</td></tr>`);
@@ -1861,18 +1888,18 @@
       const rows = computeGiftMechanisms();
       document.getElementById("giftUnitResultTable").innerHTML = `<tr>
         <th>机制</th><th>SKU / 产品</th><th>场景</th><th>赠品机制</th><th>共资券</th>
-        <th class="num">用户实付/单</th><th class="num">结算收入/单</th><th class="num">赠品前投前利润/单</th>
+        <th class="num">用户实付/件</th><th class="num">场景结算收入/件</th><th class="num">件单比</th><th class="num">结算收入/单</th><th class="num">赠品前投前利润/单</th>
         <th class="num">赠品成本/单</th><th class="num">赠品后剩余利润/单</th><th class="num">剩余利润率</th><th>状态</th></tr>` +
         (rows.length ? rows.map(row => {
           const cls = row.profitAfterGiftPerOrder > 0 ? "good" : "bad";
           return `<tr>
             <td>${escapeHtml(row.plan.name || "未命名机制")}</td><td>${escapeHtml(row.sku.sku)} / ${escapeHtml(row.sku.name)}</td><td>${row.scene}</td>
             <td>${escapeHtml(row.gift.name)} × ${money(row.giftQtyPerOrder)}</td><td>${escapeHtml(row.cofundName)}</td>
-            <td class="num">${money(row.userPayPerOrder)}</td><td class="num">${money(row.settlementPerOrder)}</td><td class="num">${money(row.baseProfitPerOrder)}</td>
+            <td class="num">${money(row.userPayPerUnit)}</td><td class="num">${money(row.settlementPerUnit)}</td><td class="num">${money(row.unitsPerOrder)}</td><td class="num">${money(row.settlementPerOrder)}</td><td class="num">${money(row.baseProfitPerOrder)}</td>
             <td class="num">${money(row.giftCostPerOrder)}</td><td class="num ${cls}">${money(row.profitAfterGiftPerOrder)}</td><td class="num ${cls}">${pct(row.remainingMargin)}</td>
             <td class="${cls}">${row.profitAfterGiftPerOrder > 0 ? "仍有利润" : "机制亏损"}</td>
           </tr>`;
-        }).join("") : `<tr><td colspan="12" class="calc-cell center">完善赠品与活动方案后显示单笔利润。</td></tr>`);
+        }).join("") : `<tr><td colspan="14" class="calc-cell center">完善赠品与活动方案后显示单笔利润。</td></tr>`);
 
       document.getElementById("giftCampaignResultTable").innerHTML = `<tr>
         <th>机制</th><th class="num">计划赠品数</th><th class="num">预计核销率</th><th class="num">最大支持销量</th><th class="num">预期销量</th>
@@ -2426,6 +2453,8 @@
         name: "",
         enabled: true,
         sku: firstSku?.sku || "",
+        skuName: firstSku?.name || "",
+        skuRef: firstSku ? giftSkuRef(firstSku) : "",
         scene: "日常",
         giftId: firstGift?.id || "",
         giftQtyPerOrder: 1,
