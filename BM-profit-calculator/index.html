@@ -707,6 +707,7 @@
         <div class="panel-body">
           <div class="actions" style="margin-bottom:8px">
             <button class="small" id="addGift">新增赠品</button>
+            <button class="small primary" id="exportGiftMechanism">导出活动测算</button>
           </div>
           <div class="scroll compact-scroll">
             <table class="sticky" id="giftLibraryTable"></table>
@@ -783,7 +784,7 @@
   </main>
 
   <script src="../assets/supabase-umd.js"></script>
-  <script src="./xlsx.full.min.js"></script>
+  <script src="./xlsx-js-style.min.js"></script>
   <script>
     const scenarios = ["日常", "小促", "大促"];
     const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
@@ -2357,6 +2358,144 @@
     function exportCofundWorkbook() {
       writeCofundWorkbook(cofundWorkbookRows(), "BM-共资券规则.xlsx");
     }
+    function exportGiftMechanismWorkbook() {
+      if (typeof XLSX === "undefined") return alert("Excel 组件尚未加载，请刷新页面后重试。");
+      const mechanismState = giftMechanismState();
+      const computedRows = computeGiftMechanisms();
+      const sections = [
+        {
+          title: "赠品成本库",
+          headers: ["赠品名称", "单个成本", "规格 / 备注", "启用"],
+          types: ["text", "money", "text", "text"],
+          rows: mechanismState.gifts.map(gift => [gift.name || "未命名赠品", num(gift.unitCost), gift.note || "", gift.enabled !== false ? "是" : "否"])
+        },
+        {
+          title: "活动机制方案",
+          headers: ["机制名称", "启用", "SKU / 产品", "场景", "赠品", "每单赠品数", "计划赠品数量", "预计核销率", "广告后台ROI", "参与共资券", "联动状态"],
+          types: ["text", "text", "text", "text", "text", "number", "number", "percent", "roi", "text", "text"],
+          rows: mechanismState.plans.map(plan => {
+            const sku = resolveGiftPlanSku(plan);
+            const gift = mechanismState.gifts.find(item => item.id === plan.giftId && item.enabled !== false);
+            const ready = Boolean(sku) && (!plan.giftId || Boolean(gift));
+            return [
+              plan.name || "未命名机制", plan.enabled !== false ? "是" : "否",
+              sku ? `${sku.sku} / ${sku.name}` : `${plan.sku || ""} / ${plan.skuName || "待重新选择"}`,
+              plan.scene || "日常", gift ? gift.name : "无赠品", gift ? num(plan.giftQtyPerOrder) : 0,
+              num(plan.plannedGiftQty), num(plan.utilizationRate, 1), plan.adRoi === "" || plan.adRoi == null ? "" : num(plan.adRoi),
+              plan.cofund !== false ? "是" : "否", ready ? "已按 SKU + 产品名联动" : "待完善"
+            ];
+          })
+        },
+        {
+          title: "单笔机制利润",
+          headers: [
+            "机制", "SKU / 产品", "场景", "赠品机制", "共资券", "活动价/件（不含共资）", "用户实付/件", "场景结算收入/件", "件单比", "结算收入/单",
+            "货品成本/单", "平台基础费/单", "赠品成本/单", "平台总费率", "平台扣费/单", "达人佣金率", "达人佣金/单", "货损率", "货损/单",
+            "投流前剩余利润/单", "投流前利润率", "广告后台ROI", "预计广告费/单", "投流后剩余利润/单", "投流后利润率", "状态"
+          ],
+          types: [
+            "text", "text", "text", "text", "text", "money", "money", "money", "number", "money",
+            "money", "money", "money", "percent", "money", "percent", "money", "percent", "money",
+            "money", "percent", "roi", "money", "money", "percent", "text"
+          ],
+          rows: computedRows.map(row => {
+            const hasAdRoi = row.adRoi > 0;
+            const resultProfit = hasAdRoi ? row.profitAfterAdPerOrder : row.profitAfterGiftPerOrder;
+            return [
+              row.plan.name || "未命名机制", `${row.sku.sku} / ${row.sku.name}`, row.scene,
+              row.hasGift ? `${row.gift.name} × ${row.giftQtyPerOrder}` : "无赠品", row.cofundName,
+              row.activityPricePerUnit, row.userPayPerUnit, row.settlementPerUnit, row.unitsPerOrder, row.settlementPerOrder,
+              row.goodsCostPerOrder, row.infraPerOrder, row.giftCostPerOrder, row.platformRate, row.platformFeePerOrder,
+              row.creatorRate, row.creatorCommissionPerOrder, row.lossRate, row.lossPerOrder,
+              row.profitAfterGiftPerOrder, row.remainingMargin, hasAdRoi ? row.adRoi : "", hasAdRoi ? row.adSpendPerOrder : "",
+              hasAdRoi ? row.profitAfterAdPerOrder : "", hasAdRoi ? row.profitAfterAdMargin : "",
+              hasAdRoi ? (resultProfit > 0 ? "投流后盈利" : "投流后亏损") : "待输入广告ROI"
+            ];
+          })
+        },
+        {
+          title: "整场活动投入与回报",
+          headers: [
+            "机制", "计划赠品数", "预计核销率", "最大支持销量", "预期销量", "计划赠品成本", "预计消耗赠品成本", "预期用户实付GMV",
+            "预期结算收入", "广告后台ROI", "预计广告费", "投流前总体利润", "投流后总体利润", "状态"
+          ],
+          types: ["text", "number", "percent", "number", "number", "money", "money", "money", "money", "roi", "money", "money", "money", "text"],
+          rows: computedRows.map(row => {
+            const hasAdRoi = row.adRoi > 0;
+            const resultProfit = hasAdRoi ? row.totalProfitAfterAd : row.totalProfitBeforeAd;
+            return [
+              row.plan.name || "未命名机制", row.plannedGiftQty, row.utilizationRate, row.maxSupportedSales, row.expectedSales,
+              row.plannedGiftCost, row.expectedConsumedGiftCost, row.expectedGmv, row.expectedSettlement, hasAdRoi ? row.adRoi : "",
+              hasAdRoi ? row.expectedAdSpend : "", row.totalProfitBeforeAd, hasAdRoi ? row.totalProfitAfterAd : "",
+              hasAdRoi ? (resultProfit > 0 ? "投流后盈利" : "投流后亏损") : "待输入广告ROI"
+            ];
+          })
+        }
+      ];
+      const maxColumns = Math.max(...sections.map(section => section.headers.length));
+      const aoa = [];
+      const merges = [];
+      const sectionTitleRows = [];
+      const headerRows = [];
+      const formattedRows = [];
+      const projectName = String(state.project.name || "未命名项目").trim() || "未命名项目";
+      aoa.push([`${projectName} - 活动机制测算`]);
+      merges.push({ s: { r: 0, c: 0 }, e: { r: 0, c: maxColumns - 1 } });
+      aoa.push([`导出时间：${new Date().toLocaleString("zh-CN", { hour12: false })}`]);
+      merges.push({ s: { r: 1, c: 0 }, e: { r: 1, c: maxColumns - 1 } });
+      aoa.push([]);
+      sections.forEach((section, sectionIndex) => {
+        const titleRow = aoa.length;
+        sectionTitleRows.push(titleRow);
+        aoa.push([section.title]);
+        merges.push({ s: { r: titleRow, c: 0 }, e: { r: titleRow, c: section.headers.length - 1 } });
+        const headerRow = aoa.length;
+        headerRows.push({ row: headerRow, columns: section.headers.length });
+        aoa.push(section.headers);
+        const rows = section.rows.length ? section.rows : [["暂无数据"]];
+        rows.forEach(row => {
+          const rowIndex = aoa.length;
+          aoa.push(row);
+          if (section.rows.length) formattedRows.push({ row: rowIndex, types: section.types });
+        });
+        if (sectionIndex < sections.length - 1) aoa.push([]);
+      });
+      const sheet = XLSX.utils.aoa_to_sheet(aoa);
+      sheet["!merges"] = merges;
+      sheet["!rows"] = aoa.map((_, index) => ({ hpt: index === 0 ? 28 : (sectionTitleRows.includes(index) ? 24 : (headerRows.some(item => item.row === index) ? 34 : 24)) }));
+      sheet["!cols"] = Array.from({ length: maxColumns }, (_, column) => {
+        const maxLength = aoa.reduce((max, row, rowIndex) => {
+          if (rowIndex <= 1) return max;
+          return Math.max(max, String(row[column] ?? "").length);
+        }, 0);
+        return { wch: Math.min(28, Math.max(11, maxLength + 2)) };
+      });
+      const titleStyle = { font: { bold: true, sz: 16, color: { rgb: "FFFFFF" } }, fill: { patternType: "solid", fgColor: { rgb: "5B45E8" } }, alignment: { vertical: "center" } };
+      const sectionStyle = { font: { bold: true, sz: 13, color: { rgb: "1E293B" } }, fill: { patternType: "solid", fgColor: { rgb: "E8EEFF" } }, alignment: { vertical: "center" } };
+      const headerStyle = { font: { bold: true, color: { rgb: "1E293B" } }, fill: { patternType: "solid", fgColor: { rgb: "F1F5F9" } }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: { bottom: { style: "thin", color: { rgb: "CBD5E1" } } } };
+      if (sheet.A1) sheet.A1.s = titleStyle;
+      sectionTitleRows.forEach(row => { const cell = sheet[XLSX.utils.encode_cell({ r: row, c: 0 })]; if (cell) cell.s = sectionStyle; });
+      headerRows.forEach(({ row, columns }) => {
+        for (let column = 0; column < columns; column++) {
+          const cell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
+          if (cell) cell.s = headerStyle;
+        }
+      });
+      formattedRows.forEach(({ row, types }) => {
+        types.forEach((type, column) => {
+          const cell = sheet[XLSX.utils.encode_cell({ r: row, c: column })];
+          if (!cell) return;
+          if (type === "money" || type === "number" || type === "roi") cell.z = "#,##0.00";
+          if (type === "percent") cell.z = "0.00%";
+          cell.s = { alignment: { vertical: "center", wrapText: true } };
+        });
+      });
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, sheet, "活动机制测算");
+      const safeProjectName = projectName.replace(/[\\/:*?"<>|]/g, "-");
+      const date = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(workbook, `BM-活动机制测算-${safeProjectName}-${date}.xlsx`);
+    }
     function bindInputs() {
       document.querySelectorAll("[data-path]").forEach(el => {
         el.disabled = !isEditing;
@@ -2442,6 +2581,7 @@
     };
     document.getElementById("downloadCofundTemplate").onclick = downloadCofundTemplate;
     document.getElementById("exportCofundFile").onclick = exportCofundWorkbook;
+    document.getElementById("exportGiftMechanism").onclick = exportGiftMechanismWorkbook;
     document.getElementById("saveCofundData").onclick = async () => {
       await persistStateNow("共资券规则");
       document.getElementById("cofundImportStatus").textContent = "共资券规则已保存。";
