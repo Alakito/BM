@@ -692,7 +692,7 @@
       <div class="panel">
         <h2>利润空间测算</h2>
         <div class="panel-body">
-          <p class="note">计算口径：毛利率 =（收入计算基准 - 成本合计/件）÷ 收入计算基准；投流空间 = 毛利率 - 平台总费率 - 达人佣金率 - 货损率；单品保本ROI = 1 ÷ 投流空间。关闭共资开关后，所有行会忽略共资券并立即重算。</p>
+          <p class="note">计算口径：毛利率 =（收入计算基准 - 成本合计/件）÷ 收入计算基准；投流空间 = 毛利率 - 平台总费率 - 达人佣金率 - 货损率；剩余利润/件 = 收入计算基准 × 投流空间；单品保本ROI = 1 ÷ 投流空间。关闭共资开关后，所有行会忽略共资券并立即重算。</p>
           <div class="actions" id="unitSpaceControls" style="margin-bottom:8px"></div>
           <div class="scroll">
             <table class="sticky" id="unitSpaceTable"></table>
@@ -716,7 +716,7 @@
       <div class="panel" style="margin-top:12px">
         <h2>活动机制方案</h2>
         <div class="panel-body">
-          <p class="note">预期销量 = 计划赠品数量 × 预计核销率 ÷ 每单赠品数。单笔利润按实际送出的赠品成本计算；活动总利润按计划拿出的全部赠品成本计算，更适合评估整场预算风险。</p>
+          <p class="note">预期销量 = 计划赠品数量 × 预计核销率 ÷ 每单赠品数。广告后台ROI = 用户实付GMV ÷ 广告费；填写ROI后会自动反推广告费，并对比投流前、投流后利润。单笔利润按实际送出的赠品成本计算；活动总利润按计划拿出的全部赠品成本计算。</p>
           <div class="actions" style="margin-bottom:8px">
             <button class="small" id="addGiftPlan">新增活动方案</button>
           </div>
@@ -1340,6 +1340,7 @@
           const costRate = settlementPerUnit > 0 ? baseCost / settlementPerUnit : 0;
           const grossMargin = settlementPerUnit > 0 ? 1 - costRate : 0;
           const adSpace = settlementPerUnit > 0 ? grossMargin - feeRate - creatorRate - num(p.lossRate) : 0;
+          const remainingProfit = settlementPerUnit * adSpace;
           const status = adSpace > 0.2 ? "空间充足" : adSpace > 0 ? "空间偏窄" : "不可投";
           rows.push({
             sku: sku.sku,
@@ -1368,6 +1369,7 @@
             creatorRate,
             lossRate: num(p.lossRate),
             adSpace,
+            remainingProfit,
             breakevenRoi: adSpace > 0 ? 1 / adSpace : null,
             status
           });
@@ -1408,15 +1410,24 @@
         const userPayPerOrder = userPayPerUnit * unitsPerOrder;
         const settlementPerOrder = settlementPerUnit * unitsPerOrder;
         const goodsCostPerOrder = num(sku.cost) * unitsPerOrder;
+        const infraPerOrder = num(p.platformInfraPerOrder);
         const creatorRate = num(sku.creatorCommissionRate, num(p.creatorCommissionRate)) || num(p.creatorCommissionRate);
-        const operatingFeesPerOrder = settlementPerOrder * (feeRate + creatorRate + num(p.lossRate));
-        const baseProfitPerOrder = settlementPerOrder - goodsCostPerOrder - num(p.platformInfraPerOrder) - operatingFeesPerOrder;
+        const lossRate = num(p.lossRate);
+        const platformFeePerOrder = settlementPerOrder * feeRate;
+        const creatorCommissionPerOrder = settlementPerOrder * creatorRate;
+        const lossPerOrder = settlementPerOrder * lossRate;
+        const operatingFeesPerOrder = platformFeePerOrder + creatorCommissionPerOrder + lossPerOrder;
+        const baseProfitPerOrder = settlementPerOrder - goodsCostPerOrder - infraPerOrder - operatingFeesPerOrder;
         const giftQtyPerOrder = Math.max(0, num(plan.giftQtyPerOrder));
         const plannedGiftQty = Math.max(0, num(plan.plannedGiftQty));
         const utilizationRate = Math.max(0, Math.min(1, num(plan.utilizationRate, 1)));
         const giftCostPerOrder = num(gift.unitCost) * giftQtyPerOrder;
         const profitAfterGiftPerOrder = baseProfitPerOrder - giftCostPerOrder;
         const remainingMargin = settlementPerOrder > 0 ? profitAfterGiftPerOrder / settlementPerOrder : 0;
+        const adRoi = Math.max(0, num(plan.adRoi));
+        const adSpendPerOrder = adRoi > 0 ? userPayPerOrder / adRoi : 0;
+        const profitAfterAdPerOrder = profitAfterGiftPerOrder - adSpendPerOrder;
+        const profitAfterAdMargin = settlementPerOrder > 0 ? profitAfterAdPerOrder / settlementPerOrder : 0;
         const maxSupportedSales = giftQtyPerOrder > 0 ? plannedGiftQty / giftQtyPerOrder : 0;
         const expectedSales = maxSupportedSales * utilizationRate;
         const plannedGiftCost = plannedGiftQty * num(gift.unitCost);
@@ -1425,7 +1436,9 @@
         const expectedGmv = expectedSales * userPayPerOrder;
         const expectedSettlement = expectedSales * settlementPerOrder;
         const expectedProfitBeforeGift = expectedSales * baseProfitPerOrder;
-        const totalProfit = expectedProfitBeforeGift - plannedGiftCost;
+        const totalProfitBeforeAd = expectedProfitBeforeGift - plannedGiftCost;
+        const expectedAdSpend = adRoi > 0 ? expectedGmv / adRoi : 0;
+        const totalProfitAfterAd = totalProfitBeforeAd - expectedAdSpend;
         return {
           plan,
           sku,
@@ -1437,11 +1450,23 @@
           unitsPerOrder,
           userPayPerOrder,
           settlementPerOrder,
+          goodsCostPerOrder,
+          infraPerOrder,
+          platformRate: feeRate,
+          platformFeePerOrder,
+          creatorRate,
+          creatorCommissionPerOrder,
+          lossRate,
+          lossPerOrder,
           baseProfitPerOrder,
           giftQtyPerOrder,
           giftCostPerOrder,
           profitAfterGiftPerOrder,
           remainingMargin,
+          adRoi,
+          adSpendPerOrder,
+          profitAfterAdPerOrder,
+          profitAfterAdMargin,
           plannedGiftQty,
           utilizationRate,
           maxSupportedSales,
@@ -1451,7 +1476,9 @@
           expectedConsumedGiftCost,
           expectedGmv,
           expectedSettlement,
-          totalProfit
+          totalProfitBeforeAd,
+          expectedAdSpend,
+          totalProfitAfterAd
         };
       }).filter(Boolean);
     }
@@ -1772,7 +1799,7 @@
       ["infra", "平台基础设施费/单", true], ["giftCost", "赠品成本/单", true], ["baseCost", "成本合计/件", true],
       ["costRate", "成本费率", true], ["grossMargin", "毛利率", true], ["platformRate", "平台总费率", true],
       ["creatorRate", "达人佣金率", true], ["lossRate", "货损率", true], ["adSpace", "可投流空间", true],
-      ["breakevenRoi", "单品保本ROI", true], ["status", "状态"]
+      ["remainingProfit", "剩余利润/件", true], ["breakevenRoi", "单品保本ROI", true], ["status", "状态"]
     ];
     function unitSpaceHeaderHtml(column) {
       const [key, label, numeric] = column;
@@ -1793,7 +1820,7 @@
             <td class="num">${money(r.userCofund)}</td><td class="num">${money(r.merchantCofund)}</td><td class="num">${money(r.platformSubsidyPerUnit)}</td><td class="num">${money(r.userPay)}</td><td class="num">${money(r.settlementPerUnit)}</td>
             <td class="num">${money(r.cost)}</td><td class="num">${money(r.infra)}</td><td class="input-cell">${input(r.giftCostInput, giftPath)}</td><td class="num">${money(r.baseCost)}</td>
             <td class="num">${pct(r.costRate)}</td><td class="num">${pct(r.grossMargin)}</td><td class="num">${pct(r.platformRate)}</td><td class="num">${pct(r.creatorRate)}</td><td class="num">${pct(r.lossRate)}</td>
-            <td class="num ${cls}">${pct(r.adSpace)}</td><td class="num">${r.breakevenRoi ? ratio(r.breakevenRoi) : "不可投"}</td><td class="${cls}">${r.status}</td>
+            <td class="num ${cls}">${pct(r.adSpace)}</td><td class="num ${cls}">${money(r.remainingProfit)}</td><td class="num">${r.breakevenRoi ? ratio(r.breakevenRoi) : "不可投"}</td><td class="${cls}">${r.status}</td>
           </tr>`;
         }).join("") : `<tr><td colspan="${unitSpaceColumns.length}" class="calc-cell center">没有符合当前筛选条件的数据。</td></tr>`);
       const count = document.getElementById("unitSpaceResultCount");
@@ -1864,7 +1891,7 @@
 
       document.getElementById("giftPlanTable").innerHTML = `<tr>
         <th>机制名称</th><th class="center">启用</th><th>SKU / 产品</th><th>场景</th><th>赠品</th>
-        <th class="num">每单赠品数</th><th class="num">计划赠品数量</th><th class="num">预计核销率</th><th class="center">参与共资券</th><th>联动状态</th><th class="center">操作</th></tr>` +
+        <th class="num">每单赠品数</th><th class="num">计划赠品数量</th><th class="num">预计核销率</th><th class="num">广告后台ROI</th><th class="center">参与共资券</th><th>联动状态</th><th class="center">操作</th></tr>` +
         (mechanismState.plans.length ? mechanismState.plans.map((plan, index) => {
           const selectedSku = resolveGiftPlanSku(plan);
           const selectedSkuRef = selectedSku ? giftSkuRef(selectedSku) : (plan.skuRef || "");
@@ -1879,40 +1906,53 @@
             <td class="input-cell">${input(plan.giftQtyPerOrder, `giftMechanism.plans.${index}.giftQtyPerOrder`, "number", "1")}</td>
             <td class="input-cell">${input(plan.plannedGiftQty, `giftMechanism.plans.${index}.plannedGiftQty`, "number", "1")}</td>
             <td class="input-cell">${input(plan.utilizationRate, `giftMechanism.plans.${index}.utilizationRate`)}</td>
+            <td class="input-cell">${input(plan.adRoi ?? "", `giftMechanism.plans.${index}.adRoi`)}</td>
             <td class="center input-cell">${input(plan.cofund !== false, `giftMechanism.plans.${index}.cofund`, "checkbox")}</td>
             <td class="${ready ? "good" : "mid"}">${statusText}</td>
             <td class="center"><button class="small danger" data-remove-gift-plan="${index}">删除</button></td>
           </tr>`;
-        }).join("") : `<tr><td colspan="11" class="calc-cell center">新增活动方案后，系统会自动联动 SKU 场景利润。</td></tr>`);
+        }).join("") : `<tr><td colspan="12" class="calc-cell center">新增活动方案后，系统会自动联动 SKU 场景利润。</td></tr>`);
 
       const rows = computeGiftMechanisms();
       document.getElementById("giftUnitResultTable").innerHTML = `<tr>
         <th>机制</th><th>SKU / 产品</th><th>场景</th><th>赠品机制</th><th>共资券</th>
-        <th class="num">用户实付/件</th><th class="num">场景结算收入/件</th><th class="num">件单比</th><th class="num">结算收入/单</th><th class="num">赠品前投前利润/单</th>
-        <th class="num">赠品成本/单</th><th class="num">赠品后剩余利润/单</th><th class="num">剩余利润率</th><th>状态</th></tr>` +
+        <th class="num">用户实付/件</th><th class="num">场景结算收入/件</th><th class="num">件单比</th><th class="num">结算收入/单</th>
+        <th class="num">货品成本/单</th><th class="num">平台基础费/单</th><th class="num">赠品成本/单</th>
+        <th class="num">平台总费率</th><th class="num">平台扣费/单</th><th class="num">达人佣金率</th><th class="num">达人佣金/单</th><th class="num">货损率</th><th class="num">货损/单</th>
+        <th class="num">投流前剩余利润/单</th><th class="num">投流前利润率</th><th class="num">广告后台ROI</th><th class="num">预计广告费/单</th><th class="num">投流后剩余利润/单</th><th class="num">投流后利润率</th><th>状态</th></tr>` +
         (rows.length ? rows.map(row => {
-          const cls = row.profitAfterGiftPerOrder > 0 ? "good" : "bad";
+          const hasAdRoi = row.adRoi > 0;
+          const resultProfit = hasAdRoi ? row.profitAfterAdPerOrder : row.profitAfterGiftPerOrder;
+          const cls = resultProfit > 0 ? "good" : "bad";
+          const status = hasAdRoi ? (resultProfit > 0 ? "投流后盈利" : "投流后亏损") : "待输入广告ROI";
           return `<tr>
             <td>${escapeHtml(row.plan.name || "未命名机制")}</td><td>${escapeHtml(row.sku.sku)} / ${escapeHtml(row.sku.name)}</td><td>${row.scene}</td>
             <td>${escapeHtml(row.gift.name)} × ${money(row.giftQtyPerOrder)}</td><td>${escapeHtml(row.cofundName)}</td>
-            <td class="num">${money(row.userPayPerUnit)}</td><td class="num">${money(row.settlementPerUnit)}</td><td class="num">${money(row.unitsPerOrder)}</td><td class="num">${money(row.settlementPerOrder)}</td><td class="num">${money(row.baseProfitPerOrder)}</td>
-            <td class="num">${money(row.giftCostPerOrder)}</td><td class="num ${cls}">${money(row.profitAfterGiftPerOrder)}</td><td class="num ${cls}">${pct(row.remainingMargin)}</td>
-            <td class="${cls}">${row.profitAfterGiftPerOrder > 0 ? "仍有利润" : "机制亏损"}</td>
+            <td class="num">${money(row.userPayPerUnit)}</td><td class="num">${money(row.settlementPerUnit)}</td><td class="num">${money(row.unitsPerOrder)}</td><td class="num">${money(row.settlementPerOrder)}</td>
+            <td class="num">${money(row.goodsCostPerOrder)}</td><td class="num">${money(row.infraPerOrder)}</td><td class="num">${money(row.giftCostPerOrder)}</td>
+            <td class="num">${pct(row.platformRate)}</td><td class="num">${money(row.platformFeePerOrder)}</td><td class="num">${pct(row.creatorRate)}</td><td class="num">${money(row.creatorCommissionPerOrder)}</td><td class="num">${pct(row.lossRate)}</td><td class="num">${money(row.lossPerOrder)}</td>
+            <td class="num ${row.profitAfterGiftPerOrder > 0 ? "good" : "bad"}">${money(row.profitAfterGiftPerOrder)}</td><td class="num">${pct(row.remainingMargin)}</td><td class="num">${hasAdRoi ? ratio(row.adRoi) : "未填写"}</td>
+            <td class="num">${hasAdRoi ? money(row.adSpendPerOrder) : "未测算"}</td><td class="num ${cls}">${hasAdRoi ? money(row.profitAfterAdPerOrder) : "未测算"}</td><td class="num ${cls}">${hasAdRoi ? pct(row.profitAfterAdMargin) : "未测算"}</td>
+            <td class="${hasAdRoi ? cls : "mid"}">${status}</td>
           </tr>`;
-        }).join("") : `<tr><td colspan="14" class="calc-cell center">完善赠品与活动方案后显示单笔利润。</td></tr>`);
+        }).join("") : `<tr><td colspan="25" class="calc-cell center">完善赠品与活动方案后显示单笔利润。</td></tr>`);
 
       document.getElementById("giftCampaignResultTable").innerHTML = `<tr>
         <th>机制</th><th class="num">计划赠品数</th><th class="num">预计核销率</th><th class="num">最大支持销量</th><th class="num">预期销量</th>
-        <th class="num">计划赠品成本</th><th class="num">预计消耗赠品成本</th><th class="num">预期用户实付GMV</th><th class="num">预期结算收入</th><th class="num">活动总体利润</th><th>状态</th></tr>` +
+        <th class="num">计划赠品成本</th><th class="num">预计消耗赠品成本</th><th class="num">预期用户实付GMV</th><th class="num">预期结算收入</th><th class="num">广告后台ROI</th><th class="num">预计广告费</th><th class="num">投流前总体利润</th><th class="num">投流后总体利润</th><th>状态</th></tr>` +
         (rows.length ? rows.map(row => {
-          const cls = row.totalProfit > 0 ? "good" : "bad";
+          const hasAdRoi = row.adRoi > 0;
+          const resultProfit = hasAdRoi ? row.totalProfitAfterAd : row.totalProfitBeforeAd;
+          const cls = resultProfit > 0 ? "good" : "bad";
+          const status = hasAdRoi ? (resultProfit > 0 ? "投流后盈利" : "投流后亏损") : "待输入广告ROI";
           return `<tr>
             <td>${escapeHtml(row.plan.name || "未命名机制")}</td><td class="num">${money(row.plannedGiftQty)}</td><td class="num">${pct(row.utilizationRate)}</td>
             <td class="num">${money(row.maxSupportedSales)}</td><td class="num">${money(row.expectedSales)}</td><td class="num">${money(row.plannedGiftCost)}</td>
             <td class="num">${money(row.expectedConsumedGiftCost)}</td><td class="num">${money(row.expectedGmv)}</td><td class="num">${money(row.expectedSettlement)}</td>
-            <td class="num ${cls}">${money(row.totalProfit)}</td><td class="${cls}">${row.totalProfit > 0 ? "活动盈利" : "活动亏损"}</td>
+            <td class="num">${hasAdRoi ? ratio(row.adRoi) : "未填写"}</td><td class="num">${hasAdRoi ? money(row.expectedAdSpend) : "未测算"}</td><td class="num ${row.totalProfitBeforeAd > 0 ? "good" : "bad"}">${money(row.totalProfitBeforeAd)}</td>
+            <td class="num ${cls}">${hasAdRoi ? money(row.totalProfitAfterAd) : "未测算"}</td><td class="${hasAdRoi ? cls : "mid"}">${status}</td>
           </tr>`;
-        }).join("") : `<tr><td colspan="11" class="calc-cell center">暂无可计算的活动方案。</td></tr>`);
+        }).join("") : `<tr><td colspan="14" class="calc-cell center">暂无可计算的活动方案。</td></tr>`);
     }
     function renderOptimization(s) {
       const gap = s.gapToTarget;
@@ -2460,6 +2500,7 @@
         giftQtyPerOrder: 1,
         plannedGiftQty: 0,
         utilizationRate: 1,
+        adRoi: "",
         cofund: true
       });
       markDirty(); render();
