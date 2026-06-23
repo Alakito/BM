@@ -533,6 +533,7 @@
       <button class="tab" data-tab="details">场景明细</button>
       <button class="tab" data-tab="cartDeals">凑单订单</button>
       <button class="tab" data-tab="unitSpace">利润空间测算</button>
+      <button class="tab" data-tab="giftMechanism">活动机制测算</button>
       <button class="tab" data-tab="optimize">优化模拟</button>
     </div>
 
@@ -700,6 +701,50 @@
       </div>
     </section>
 
+    <section id="giftMechanism" class="view">
+      <div class="panel">
+        <h2>赠品成本库</h2>
+        <div class="panel-body">
+          <div class="actions" style="margin-bottom:8px">
+            <button class="small" id="addGift">新增赠品</button>
+          </div>
+          <div class="scroll compact-scroll">
+            <table class="sticky" id="giftLibraryTable"></table>
+          </div>
+        </div>
+      </div>
+      <div class="panel" style="margin-top:12px">
+        <h2>活动机制方案</h2>
+        <div class="panel-body">
+          <p class="note">预期销量 = 计划赠品数量 × 预计核销率 ÷ 每单赠品数。单笔利润按实际送出的赠品成本计算；活动总利润按计划拿出的全部赠品成本计算，更适合评估整场预算风险。</p>
+          <div class="actions" style="margin-bottom:8px">
+            <button class="small" id="addGiftPlan">新增活动方案</button>
+          </div>
+          <div class="scroll compact-scroll">
+            <table class="sticky" id="giftPlanTable"></table>
+          </div>
+        </div>
+      </div>
+      <div class="grid two" style="margin-top:12px">
+        <div class="panel">
+          <h2>单笔机制利润</h2>
+          <div class="panel-body">
+            <div class="scroll">
+              <table class="sticky" id="giftUnitResultTable"></table>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <h2>整场活动投入与回报</h2>
+          <div class="panel-body">
+            <div class="scroll">
+              <table class="sticky" id="giftCampaignResultTable"></table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section id="cartDeals" class="view">
       <div class="panel">
         <h2>凑单订单场景测算</h2>
@@ -790,6 +835,7 @@
       },
       scenarioShares: { "日常": 0, "小促": 0, "大促": 0 },
       unitSpace: { sceneFilter: "全部", search: "", statusFilter: "全部", cofundEnabled: true, sortKey: "sku", sortDir: "asc", adjustments: {} },
+      giftMechanism: { gifts: [], plans: [] },
       skus: [],
       storeCoupon: { newUser: 0 },
       cartDeals: [],
@@ -1069,6 +1115,11 @@
           if (v !== "" && v != null) p.weights[i] = normalizeRateNumber(v);
         });
       });
+      (next.giftMechanism?.plans || []).forEach(plan => {
+        if (plan.utilizationRate !== "" && plan.utilizationRate != null) {
+          plan.utilizationRate = normalizeRateNumber(plan.utilizationRate);
+        }
+      });
       return next;
     }
     function input(value, path, type = "number", step = "0.01") {
@@ -1083,6 +1134,12 @@
     }
     function select(value, path, options) {
       return `<select data-path="${path}">${options.map(o => `<option value="${o}" ${o === value ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+    }
+    function escapeHtml(value) {
+      return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+    }
+    function labeledSelect(value, path, options, emptyLabel = "请选择") {
+      return `<select data-path="${path}"><option value="">${emptyLabel}</option>${options.map(option => `<option value="${escapeHtml(option.value)}" ${option.value === value ? "selected" : ""}>${escapeHtml(option.label)}</option>`).join("")}</select>`;
     }
     function setPath(path, value, isCheckbox = false) {
       if (!isEditing) return;
@@ -1178,6 +1235,15 @@
       const key = unitAdjustmentKey(sku, scene);
       if (!unitState.adjustments[key]) unitState.adjustments[key] = { mechanism: "", giftCost: "" };
       return unitState.adjustments[key];
+    }
+    function giftMechanismState() {
+      if (!state.giftMechanism) state.giftMechanism = {};
+      if (!Array.isArray(state.giftMechanism.gifts)) state.giftMechanism.gifts = [];
+      if (!Array.isArray(state.giftMechanism.plans)) state.giftMechanism.plans = [];
+      return state.giftMechanism;
+    }
+    function makeLocalId(prefix) {
+      return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     }
     function computeDetails() {
       const shares = normalizeShares();
@@ -1300,6 +1366,70 @@
         return String(av ?? "").localeCompare(String(bv ?? ""), "zh-CN", { numeric: true }) * direction;
       });
       return filtered;
+    }
+    function computeGiftMechanisms() {
+      const mechanismState = giftMechanismState();
+      const p = state.project;
+      const feeRate = platformRate();
+      return mechanismState.plans.filter(plan => plan.enabled !== false).map(plan => {
+        const sku = state.skus.find(item => item.sku === plan.sku && item.enabled);
+        const gift = mechanismState.gifts.find(item => item.id === plan.giftId && item.enabled !== false);
+        if (!sku || !gift) return null;
+        const scene = scenarios.includes(plan.scene) ? plan.scene : "日常";
+        const storeCoupon = effectiveStoreCoupon(sku, scene);
+        const afterStore = Math.max(0, num(sku.listPrice) - storeCoupon);
+        const cofund = matchCofundByAmount(num(sku.listPrice), scene, plan.cofund !== false);
+        const userCofund = cofund ? cofund.userDiscount : 0;
+        const merchantCofund = userCofund * (cofund ? num(cofund.merchantShare) : 0);
+        const userPayPerUnit = Math.max(0, afterStore - userCofund);
+        const settlementPerUnit = Math.max(0, afterStore - merchantCofund);
+        const unitsPerOrder = Math.max(1, num(sku.unitPerOrder, 1));
+        const userPayPerOrder = userPayPerUnit * unitsPerOrder;
+        const settlementPerOrder = settlementPerUnit * unitsPerOrder;
+        const goodsCostPerOrder = num(sku.cost) * unitsPerOrder;
+        const creatorRate = num(sku.creatorCommissionRate, num(p.creatorCommissionRate)) || num(p.creatorCommissionRate);
+        const operatingFeesPerOrder = settlementPerOrder * (feeRate + creatorRate + num(p.lossRate));
+        const baseProfitPerOrder = settlementPerOrder - goodsCostPerOrder - num(p.platformInfraPerOrder) - operatingFeesPerOrder;
+        const giftQtyPerOrder = Math.max(0, num(plan.giftQtyPerOrder));
+        const plannedGiftQty = Math.max(0, num(plan.plannedGiftQty));
+        const utilizationRate = Math.max(0, Math.min(1, num(plan.utilizationRate, 1)));
+        const giftCostPerOrder = num(gift.unitCost) * giftQtyPerOrder;
+        const profitAfterGiftPerOrder = baseProfitPerOrder - giftCostPerOrder;
+        const remainingMargin = settlementPerOrder > 0 ? profitAfterGiftPerOrder / settlementPerOrder : 0;
+        const maxSupportedSales = giftQtyPerOrder > 0 ? plannedGiftQty / giftQtyPerOrder : 0;
+        const expectedSales = maxSupportedSales * utilizationRate;
+        const plannedGiftCost = plannedGiftQty * num(gift.unitCost);
+        const expectedGiftConsumption = expectedSales * giftQtyPerOrder;
+        const expectedConsumedGiftCost = expectedGiftConsumption * num(gift.unitCost);
+        const expectedGmv = expectedSales * userPayPerOrder;
+        const expectedSettlement = expectedSales * settlementPerOrder;
+        const expectedProfitBeforeGift = expectedSales * baseProfitPerOrder;
+        const totalProfit = expectedProfitBeforeGift - plannedGiftCost;
+        return {
+          plan,
+          sku,
+          gift,
+          scene,
+          cofundName: plan.cofund === false ? "未参与" : (cofund ? cofund.name : (scene === "大促" ? "无可用券" : "场景不适用")),
+          userPayPerOrder,
+          settlementPerOrder,
+          baseProfitPerOrder,
+          giftQtyPerOrder,
+          giftCostPerOrder,
+          profitAfterGiftPerOrder,
+          remainingMargin,
+          plannedGiftQty,
+          utilizationRate,
+          maxSupportedSales,
+          expectedSales,
+          plannedGiftCost,
+          expectedGiftConsumption,
+          expectedConsumedGiftCost,
+          expectedGmv,
+          expectedSettlement,
+          totalProfit
+        };
+      }).filter(Boolean);
     }
     function computeCartDeals() {
       const p = state.project;
@@ -1444,6 +1574,7 @@
       renderDetails(summary.rows);
       renderCartDeals(computeCartDeals());
       renderUnitSpace(computeUnitSpaces());
+      renderGiftMechanism();
       renderOptimization(summary);
       renderTargetPlan();
       bindInputs();
@@ -1686,6 +1817,75 @@
         renderUnitSpaceTable(computeUnitSpaces());
         bindInputs();
       };
+    }
+    function renderGiftMechanism() {
+      const mechanismState = giftMechanismState();
+      const skuOptions = state.skus.filter(sku => sku.enabled).map(sku => ({
+        value: sku.sku,
+        label: `${sku.sku} / ${sku.name || "未命名产品"}`
+      }));
+      const giftOptions = mechanismState.gifts.filter(gift => gift.enabled !== false).map(gift => ({
+        value: gift.id,
+        label: `${gift.name || "未命名赠品"} / ${money(gift.unitCost)}`
+      }));
+      document.getElementById("giftLibraryTable").innerHTML = `<tr>
+        <th>赠品名称</th><th class="num">单个成本</th><th>规格 / 备注</th><th class="center">启用</th><th class="center">操作</th></tr>` +
+        (mechanismState.gifts.length ? mechanismState.gifts.map((gift, index) => `<tr>
+          <td class="input-cell">${input(gift.name, `giftMechanism.gifts.${index}.name`, "text")}</td>
+          <td class="input-cell">${input(gift.unitCost, `giftMechanism.gifts.${index}.unitCost`)}</td>
+          <td class="input-cell">${input(gift.note, `giftMechanism.gifts.${index}.note`, "text")}</td>
+          <td class="center input-cell">${input(gift.enabled !== false, `giftMechanism.gifts.${index}.enabled`, "checkbox")}</td>
+          <td class="center"><button class="small danger" data-remove-gift="${index}">删除</button></td>
+        </tr>`).join("") : `<tr><td colspan="5" class="calc-cell center">先新增赠品并填写单个成本。</td></tr>`);
+
+      document.getElementById("giftPlanTable").innerHTML = `<tr>
+        <th>机制名称</th><th class="center">启用</th><th>SKU / 产品</th><th>场景</th><th>赠品</th>
+        <th class="num">每单赠品数</th><th class="num">计划赠品数量</th><th class="num">预计核销率</th><th class="center">参与共资券</th><th>联动状态</th><th class="center">操作</th></tr>` +
+        (mechanismState.plans.length ? mechanismState.plans.map((plan, index) => {
+          const ready = skuOptions.some(item => item.value === plan.sku) && giftOptions.some(item => item.value === plan.giftId);
+          return `<tr>
+            <td class="input-cell">${input(plan.name, `giftMechanism.plans.${index}.name`, "text")}</td>
+            <td class="center input-cell">${input(plan.enabled !== false, `giftMechanism.plans.${index}.enabled`, "checkbox")}</td>
+            <td class="input-cell">${labeledSelect(plan.sku, `giftMechanism.plans.${index}.sku`, skuOptions, "选择 SKU")}</td>
+            <td class="input-cell">${select(plan.scene || "日常", `giftMechanism.plans.${index}.scene`, scenarios)}</td>
+            <td class="input-cell">${labeledSelect(plan.giftId, `giftMechanism.plans.${index}.giftId`, giftOptions, "选择赠品")}</td>
+            <td class="input-cell">${input(plan.giftQtyPerOrder, `giftMechanism.plans.${index}.giftQtyPerOrder`, "number", "1")}</td>
+            <td class="input-cell">${input(plan.plannedGiftQty, `giftMechanism.plans.${index}.plannedGiftQty`, "number", "1")}</td>
+            <td class="input-cell">${input(plan.utilizationRate, `giftMechanism.plans.${index}.utilizationRate`)}</td>
+            <td class="center input-cell">${input(plan.cofund !== false, `giftMechanism.plans.${index}.cofund`, "checkbox")}</td>
+            <td class="${ready ? "good" : "mid"}">${ready ? "已联动" : "待选择 SKU / 赠品"}</td>
+            <td class="center"><button class="small danger" data-remove-gift-plan="${index}">删除</button></td>
+          </tr>`;
+        }).join("") : `<tr><td colspan="11" class="calc-cell center">新增活动方案后，系统会自动联动 SKU 场景利润。</td></tr>`);
+
+      const rows = computeGiftMechanisms();
+      document.getElementById("giftUnitResultTable").innerHTML = `<tr>
+        <th>机制</th><th>SKU / 产品</th><th>场景</th><th>赠品机制</th><th>共资券</th>
+        <th class="num">用户实付/单</th><th class="num">结算收入/单</th><th class="num">赠品前投前利润/单</th>
+        <th class="num">赠品成本/单</th><th class="num">赠品后剩余利润/单</th><th class="num">剩余利润率</th><th>状态</th></tr>` +
+        (rows.length ? rows.map(row => {
+          const cls = row.profitAfterGiftPerOrder > 0 ? "good" : "bad";
+          return `<tr>
+            <td>${escapeHtml(row.plan.name || "未命名机制")}</td><td>${escapeHtml(row.sku.sku)} / ${escapeHtml(row.sku.name)}</td><td>${row.scene}</td>
+            <td>${escapeHtml(row.gift.name)} × ${money(row.giftQtyPerOrder)}</td><td>${escapeHtml(row.cofundName)}</td>
+            <td class="num">${money(row.userPayPerOrder)}</td><td class="num">${money(row.settlementPerOrder)}</td><td class="num">${money(row.baseProfitPerOrder)}</td>
+            <td class="num">${money(row.giftCostPerOrder)}</td><td class="num ${cls}">${money(row.profitAfterGiftPerOrder)}</td><td class="num ${cls}">${pct(row.remainingMargin)}</td>
+            <td class="${cls}">${row.profitAfterGiftPerOrder > 0 ? "仍有利润" : "机制亏损"}</td>
+          </tr>`;
+        }).join("") : `<tr><td colspan="12" class="calc-cell center">完善赠品与活动方案后显示单笔利润。</td></tr>`);
+
+      document.getElementById("giftCampaignResultTable").innerHTML = `<tr>
+        <th>机制</th><th class="num">计划赠品数</th><th class="num">预计核销率</th><th class="num">最大支持销量</th><th class="num">预期销量</th>
+        <th class="num">计划赠品成本</th><th class="num">预计消耗赠品成本</th><th class="num">预期用户实付GMV</th><th class="num">预期结算收入</th><th class="num">活动总体利润</th><th>状态</th></tr>` +
+        (rows.length ? rows.map(row => {
+          const cls = row.totalProfit > 0 ? "good" : "bad";
+          return `<tr>
+            <td>${escapeHtml(row.plan.name || "未命名机制")}</td><td class="num">${money(row.plannedGiftQty)}</td><td class="num">${pct(row.utilizationRate)}</td>
+            <td class="num">${money(row.maxSupportedSales)}</td><td class="num">${money(row.expectedSales)}</td><td class="num">${money(row.plannedGiftCost)}</td>
+            <td class="num">${money(row.expectedConsumedGiftCost)}</td><td class="num">${money(row.expectedGmv)}</td><td class="num">${money(row.expectedSettlement)}</td>
+            <td class="num ${cls}">${money(row.totalProfit)}</td><td class="${cls}">${row.totalProfit > 0 ? "活动盈利" : "活动亏损"}</td>
+          </tr>`;
+        }).join("") : `<tr><td colspan="11" class="calc-cell center">暂无可计算的活动方案。</td></tr>`);
     }
     function renderOptimization(s) {
       const gap = s.gapToTarget;
@@ -2098,7 +2298,25 @@
       document.querySelectorAll("[data-remove-sku]").forEach(btn => { btn.disabled = !isEditing; btn.onclick = () => { if (!isEditing) return; state.skus.splice(Number(btn.dataset.removeSku), 1); markDirty(); render(); }; });
       document.querySelectorAll("[data-remove-cofund]").forEach(btn => { btn.disabled = !isEditing; btn.onclick = () => { if (!isEditing) return; state.cofundRules.splice(Number(btn.dataset.removeCofund), 1); markDirty(); render(); }; });
       document.querySelectorAll("[data-remove-cart]").forEach(btn => { btn.disabled = !isEditing; btn.onclick = () => { if (!isEditing) return; state.cartDeals.splice(Number(btn.dataset.removeCart), 1); markDirty(); render(); }; });
-      ["addSku","addCartDeal","addCofund","resetData"].forEach(id => {
+      document.querySelectorAll("[data-remove-gift]").forEach(btn => {
+        btn.disabled = !isEditing;
+        btn.onclick = () => {
+          if (!isEditing) return;
+          const mechanismState = giftMechanismState();
+          const removed = mechanismState.gifts.splice(Number(btn.dataset.removeGift), 1)[0];
+          mechanismState.plans.forEach(plan => { if (plan.giftId === removed?.id) plan.giftId = ""; });
+          markDirty(); render();
+        };
+      });
+      document.querySelectorAll("[data-remove-gift-plan]").forEach(btn => {
+        btn.disabled = !isEditing;
+        btn.onclick = () => {
+          if (!isEditing) return;
+          giftMechanismState().plans.splice(Number(btn.dataset.removeGiftPlan), 1);
+          markDirty(); render();
+        };
+      });
+      ["addSku","addCartDeal","addCofund","addGift","addGiftPlan","resetData"].forEach(id => {
         const btn = document.getElementById(id);
         if (btn) btn.disabled = !isEditing;
       });
@@ -2191,6 +2409,30 @@
     document.getElementById("addCofund").onclick = () => {
       if (!isEditing) return;
       state.cofundRules.push({ name: "", scene: "大促", discountRate: 0, threshold: 0, cap: 0, platformShare: 0, merchantShare: 0 });
+      markDirty(); render();
+    };
+    document.getElementById("addGift").onclick = () => {
+      if (!isEditing) return;
+      giftMechanismState().gifts.push({ id: makeLocalId("gift"), name: "", unitCost: 0, note: "", enabled: true });
+      markDirty(); render();
+    };
+    document.getElementById("addGiftPlan").onclick = () => {
+      if (!isEditing) return;
+      const mechanismState = giftMechanismState();
+      const firstSku = state.skus.find(sku => sku.enabled);
+      const firstGift = mechanismState.gifts.find(gift => gift.enabled !== false);
+      mechanismState.plans.push({
+        id: makeLocalId("gift_plan"),
+        name: "",
+        enabled: true,
+        sku: firstSku?.sku || "",
+        scene: "日常",
+        giftId: firstGift?.id || "",
+        giftQtyPerOrder: 1,
+        plannedGiftQty: 0,
+        utilizationRate: 1,
+        cofund: true
+      });
       markDirty(); render();
     };
     document.getElementById("resetData").onclick = () => {
