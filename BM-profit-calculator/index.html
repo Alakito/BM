@@ -1448,6 +1448,7 @@
           hasGift,
           scene,
           cofundName: cofundEnabled ? detailRow.cofundName : "未参与",
+          activityPricePerUnit: detailRow.afterStore,
           userPayPerUnit,
           settlementPerUnit,
           unitsPerOrder,
@@ -1920,7 +1921,7 @@
       const rows = computeGiftMechanisms();
       document.getElementById("giftUnitResultTable").innerHTML = `<tr>
         <th>机制</th><th>SKU / 产品</th><th>场景</th><th>赠品机制</th><th>共资券</th>
-        <th class="num">用户实付/件</th><th class="num">场景结算收入/件</th><th class="num">件单比</th><th class="num">结算收入/单</th>
+        <th class="num">活动价/件<br>（不含共资）</th><th class="num">用户实付/件</th><th class="num">场景结算收入/件</th><th class="num">件单比</th><th class="num">结算收入/单</th>
         <th class="num">货品成本/单</th><th class="num">平台基础费/单</th><th class="num">赠品成本/单</th>
         <th class="num">平台总费率</th><th class="num">平台扣费/单</th><th class="num">达人佣金率</th><th class="num">达人佣金/单</th><th class="num">货损率</th><th class="num">货损/单</th>
         <th class="num">投流前剩余利润/单</th><th class="num">投流前利润率</th><th class="num">广告后台ROI</th><th class="num">预计广告费/单</th><th class="num">投流后剩余利润/单</th><th class="num">投流后利润率</th><th>状态</th></tr>` +
@@ -1932,14 +1933,14 @@
           return `<tr>
             <td>${escapeHtml(row.plan.name || "未命名机制")}</td><td>${escapeHtml(row.sku.sku)} / ${escapeHtml(row.sku.name)}</td><td>${row.scene}</td>
             <td>${row.hasGift ? `${escapeHtml(row.gift.name)} × ${money(row.giftQtyPerOrder)}` : "无赠品"}</td><td>${escapeHtml(row.cofundName)}</td>
-            <td class="num">${money(row.userPayPerUnit)}</td><td class="num">${money(row.settlementPerUnit)}</td><td class="num">${money(row.unitsPerOrder)}</td><td class="num">${money(row.settlementPerOrder)}</td>
+            <td class="num">${money(row.activityPricePerUnit)}</td><td class="num">${money(row.userPayPerUnit)}</td><td class="num">${money(row.settlementPerUnit)}</td><td class="num">${money(row.unitsPerOrder)}</td><td class="num">${money(row.settlementPerOrder)}</td>
             <td class="num">${money(row.goodsCostPerOrder)}</td><td class="num">${money(row.infraPerOrder)}</td><td class="num">${money(row.giftCostPerOrder)}</td>
             <td class="num">${pct(row.platformRate)}</td><td class="num">${money(row.platformFeePerOrder)}</td><td class="num">${pct(row.creatorRate)}</td><td class="num">${money(row.creatorCommissionPerOrder)}</td><td class="num">${pct(row.lossRate)}</td><td class="num">${money(row.lossPerOrder)}</td>
             <td class="num ${row.profitAfterGiftPerOrder > 0 ? "good" : "bad"}">${money(row.profitAfterGiftPerOrder)}</td><td class="num">${pct(row.remainingMargin)}</td><td class="num">${hasAdRoi ? ratio(row.adRoi) : "未填写"}</td>
             <td class="num">${hasAdRoi ? money(row.adSpendPerOrder) : "未测算"}</td><td class="num ${cls}">${hasAdRoi ? money(row.profitAfterAdPerOrder) : "未测算"}</td><td class="num ${cls}">${hasAdRoi ? pct(row.profitAfterAdMargin) : "未测算"}</td>
             <td class="${hasAdRoi ? cls : "mid"}">${status}</td>
           </tr>`;
-        }).join("") : `<tr><td colspan="25" class="calc-cell center">完善赠品与活动方案后显示单笔利润。</td></tr>`);
+        }).join("") : `<tr><td colspan="26" class="calc-cell center">完善赠品与活动方案后显示单笔利润。</td></tr>`);
 
       document.getElementById("giftCampaignResultTable").innerHTML = `<tr>
         <th>机制</th><th class="num">计划赠品数</th><th class="num">预计核销率</th><th class="num">最大支持销量</th><th class="num">预期销量</th>
