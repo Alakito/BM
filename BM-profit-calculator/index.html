@@ -716,7 +716,7 @@
       <div class="panel" style="margin-top:12px">
         <h2>活动机制方案</h2>
         <div class="panel-body">
-          <p class="note">预期销量 = 计划赠品数量 × 预计核销率 ÷ 每单赠品数。广告后台ROI = 用户实付GMV ÷ 广告费；填写ROI后会自动反推广告费，并对比投流前、投流后利润。单笔利润按实际送出的赠品成本计算；活动总利润按计划拿出的全部赠品成本计算。</p>
+          <p class="note">赠品可以选择“无”，此时赠品成本按 0 计算且方案仍参与单笔利润测算。预期销量 = 计划赠品数量 × 预计核销率 ÷ 每单赠品数。广告后台ROI = 用户实付GMV ÷ 广告费；填写ROI后会自动反推广告费，并对比投流前、投流后利润。</p>
           <div class="actions" style="margin-bottom:8px">
             <button class="small" id="addGiftPlan">新增活动方案</button>
           </div>
@@ -1398,8 +1398,10 @@
       const detailRows = computeDetails();
       return mechanismState.plans.filter(plan => plan.enabled !== false).map(plan => {
         const sku = resolveGiftPlanSku(plan);
-        const gift = mechanismState.gifts.find(item => item.id === plan.giftId && item.enabled !== false);
-        if (!sku || !gift) return null;
+        const selectedGift = mechanismState.gifts.find(item => item.id === plan.giftId && item.enabled !== false);
+        if (!sku || (plan.giftId && !selectedGift)) return null;
+        const hasGift = Boolean(selectedGift);
+        const gift = selectedGift || { id: "", name: "无赠品", unitCost: 0, enabled: true };
         const scene = scenarios.includes(plan.scene) ? plan.scene : "日常";
         const detailRow = detailRows.find(row => row.skuRef === giftSkuRef(sku) && row.scene === scene);
         if (!detailRow) return null;
@@ -1418,7 +1420,7 @@
         const lossPerOrder = settlementPerOrder * lossRate;
         const operatingFeesPerOrder = platformFeePerOrder + creatorCommissionPerOrder + lossPerOrder;
         const baseProfitPerOrder = settlementPerOrder - goodsCostPerOrder - infraPerOrder - operatingFeesPerOrder;
-        const giftQtyPerOrder = Math.max(0, num(plan.giftQtyPerOrder));
+        const giftQtyPerOrder = hasGift ? Math.max(0, num(plan.giftQtyPerOrder)) : 0;
         const plannedGiftQty = Math.max(0, num(plan.plannedGiftQty));
         const utilizationRate = Math.max(0, Math.min(1, num(plan.utilizationRate, 1)));
         const giftCostPerOrder = num(gift.unitCost) * giftQtyPerOrder;
@@ -1443,6 +1445,7 @@
           plan,
           sku,
           gift,
+          hasGift,
           scene,
           cofundName: cofundEnabled ? detailRow.cofundName : "未参与",
           userPayPerUnit,
@@ -1895,14 +1898,15 @@
         (mechanismState.plans.length ? mechanismState.plans.map((plan, index) => {
           const selectedSku = resolveGiftPlanSku(plan);
           const selectedSkuRef = selectedSku ? giftSkuRef(selectedSku) : (plan.skuRef || "");
-          const ready = Boolean(selectedSku) && giftOptions.some(item => item.value === plan.giftId);
+          const giftReady = !plan.giftId || giftOptions.some(item => item.value === plan.giftId);
+          const ready = Boolean(selectedSku) && giftReady;
           const statusText = ready ? "已按 SKU + 产品名联动" : (plan.sku ? "同 SKU 可能有多个产品，请重新选择" : "待选择 SKU / 赠品");
           return `<tr>
             <td class="input-cell">${input(plan.name, `giftMechanism.plans.${index}.name`, "text")}</td>
             <td class="center input-cell">${input(plan.enabled !== false, `giftMechanism.plans.${index}.enabled`, "checkbox")}</td>
             <td class="input-cell">${labeledSelect(selectedSkuRef, `giftMechanism.plans.${index}.skuRef`, skuOptions, "选择 SKU + 产品名")}</td>
             <td class="input-cell">${select(plan.scene || "日常", `giftMechanism.plans.${index}.scene`, scenarios)}</td>
-            <td class="input-cell">${labeledSelect(plan.giftId, `giftMechanism.plans.${index}.giftId`, giftOptions, "选择赠品")}</td>
+            <td class="input-cell">${labeledSelect(plan.giftId, `giftMechanism.plans.${index}.giftId`, giftOptions, "无")}</td>
             <td class="input-cell">${input(plan.giftQtyPerOrder, `giftMechanism.plans.${index}.giftQtyPerOrder`, "number", "1")}</td>
             <td class="input-cell">${input(plan.plannedGiftQty, `giftMechanism.plans.${index}.plannedGiftQty`, "number", "1")}</td>
             <td class="input-cell">${input(plan.utilizationRate, `giftMechanism.plans.${index}.utilizationRate`)}</td>
@@ -1927,7 +1931,7 @@
           const status = hasAdRoi ? (resultProfit > 0 ? "投流后盈利" : "投流后亏损") : "待输入广告ROI";
           return `<tr>
             <td>${escapeHtml(row.plan.name || "未命名机制")}</td><td>${escapeHtml(row.sku.sku)} / ${escapeHtml(row.sku.name)}</td><td>${row.scene}</td>
-            <td>${escapeHtml(row.gift.name)} × ${money(row.giftQtyPerOrder)}</td><td>${escapeHtml(row.cofundName)}</td>
+            <td>${row.hasGift ? `${escapeHtml(row.gift.name)} × ${money(row.giftQtyPerOrder)}` : "无赠品"}</td><td>${escapeHtml(row.cofundName)}</td>
             <td class="num">${money(row.userPayPerUnit)}</td><td class="num">${money(row.settlementPerUnit)}</td><td class="num">${money(row.unitsPerOrder)}</td><td class="num">${money(row.settlementPerOrder)}</td>
             <td class="num">${money(row.goodsCostPerOrder)}</td><td class="num">${money(row.infraPerOrder)}</td><td class="num">${money(row.giftCostPerOrder)}</td>
             <td class="num">${pct(row.platformRate)}</td><td class="num">${money(row.platformFeePerOrder)}</td><td class="num">${pct(row.creatorRate)}</td><td class="num">${money(row.creatorCommissionPerOrder)}</td><td class="num">${pct(row.lossRate)}</td><td class="num">${money(row.lossPerOrder)}</td>
