@@ -343,6 +343,13 @@
       }
       return "";
     }
+    function recordExactValue(record, aliases) {
+      for (const alias of aliases) {
+        const normalized = normalizeHeaderName(alias);
+        if (normalized in record) return record[normalized];
+      }
+      return "";
+    }
     function parseMetric(value) {
       if (value == null || value === "") return 0;
       if (typeof value === "number") return Number.isFinite(value) ? value : 0;
@@ -414,7 +421,8 @@
         const ctrRaw = recordValue(record, ["点击率（视频）", "点击率", "CTR"]);
         const conversionRaw = recordValue(record, ["CTOR（SKU 订单）", "CTOR", "转化率"]);
         const publishDate = dateKey(recordValue(record, ["发布时间", "发布日期", "Publish Time"]));
-        const date = dateKey(recordValue(record, ["时间", "日期", "数据日期"])) || reportDate || publishDate;
+        const explicitDate = dateKey(recordExactValue(record, ["时间", "日期", "数据日期", "数据时间", "Date"]));
+        const date = explicitDate || reportDate || "";
         return {
           date,
           publishDate,
