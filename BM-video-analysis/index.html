@@ -140,6 +140,7 @@
     table { width: 100%; min-width: 1120px; border-collapse: collapse; table-layout: auto; background: #fff; }
     #topTable, #stableDetailTable { min-width: 1480px; }
     #trendTable { min-width: 1320px; }
+    #periodCompareTable { min-width: 1180px; }
     th, td { border: 0; border-bottom: 1px solid var(--line); padding: 10px 11px; vertical-align: middle; overflow-wrap: anywhere; }
     th { position: sticky; top: 0; z-index: 2; background: #f8fafc; color: var(--ink); font-weight: 900; text-align: left; }
     td.num, th.num { text-align: right; }
@@ -215,6 +216,14 @@
     <div class="kpis" id="kpis"></div>
 
     <section class="panel">
+      <h2>基期 vs 对比期</h2>
+      <div class="panel-body">
+        <div class="scroll compact-scroll"><table id="periodCompareTable"></table></div>
+        <div class="analysis-box" id="periodCompareAnalysis"></div>
+      </div>
+    </section>
+
+    <section class="panel">
       <h2>每日视频表现日历</h2>
       <div class="panel-body">
         <div class="calendar-grid" id="calendar"></div>
@@ -280,6 +289,12 @@
       stableMinOrderDays: 1,
       stableMinDailyOrders: 1,
       topLimit: 30,
+      analysisStart: "",
+      analysisEnd: "",
+      baseStart: "",
+      baseEnd: "",
+      compareStart: "",
+      compareEnd: "",
       search: ""
     };
     let state = loadState();
@@ -307,6 +322,7 @@
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
       if (!Array.isArray(next.coreRows)) next.coreRows = [];
       ["minW", "recentDays", "stableMinOrderDays", "stableMinDailyOrders", "topLimit"].forEach(key => next[key] = num(next[key], defaultState[key]));
+      ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search"].forEach(key => next[key] = String(next[key] || ""));
       return next;
     }
     function num(v, fallback = 0) {
@@ -389,6 +405,24 @@
       const db = new Date(`${b}T00:00:00`);
       if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return null;
       return Math.round((db - da) / 86400000);
+    }
+    function inDateRange(date, start, end) {
+      if (!date) return false;
+      if (start && date < start) return false;
+      if (end && date > end) return false;
+      return true;
+    }
+    function mergeRows(existing, incoming, keyFn) {
+      const merged = new Map();
+      existing.forEach(row => merged.set(keyFn(row), row));
+      incoming.forEach(row => merged.set(keyFn(row), row));
+      return [...merged.values()].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
+    }
+    function detailRowKey(row) {
+      return [row.date, row.videoId, row.product || row.title || row.creator || ""].join("__");
+    }
+    function coreRowKey(row) {
+      return row.date || "";
     }
     function workbookRowsFromBuffer(buffer) {
       const workbook = XLSX.read(buffer, { type: "array", cellDates: true, raw: false });
@@ -526,12 +560,42 @@
         totalGmv: totals.gmv
       };
     }
+    function periodSummary(label, rows, start, end) {
+      const periodRows = rows.filter(row => inDateRange(row.date, start, end));
+      const totals = sumVideoRows(periodRows);
+      const dates = [...new Set(periodRows.map(row => row.date).filter(Boolean))].sort();
+      const videoCount = new Set(periodRows.map(row => row.videoId || `${row.creator}_${row.title}`)).size;
+      const days = dates.length || 1;
+      return {
+        label,
+        start,
+        end,
+        rows: periodRows,
+        dates,
+        videoCount,
+        activeDays: dates.length,
+        totals,
+        avgOrders: totals.orders / days,
+        avgW: totals.w / days,
+        avgExposure: totals.exposure / days,
+        avgClicks: totals.clicks / days,
+        ctr: totals.w > 0 ? totals.clicks / totals.w : 0,
+        conversion: totals.clicks > 0 ? totals.orders / totals.clicks : 0,
+        avgGmv: totals.gmv / days
+      };
+    }
+    function periodRangeText(summary) {
+      if (!summary.start && !summary.end) return "未设置";
+      return `${summary.start || "最早"} ~ ${summary.end || "最新"}`;
+    }
     function computeAnalysis() {
       const qualified = state.detailRows.filter(row => num(row.w) >= num(state.minW, 500));
       const keyword = String(state.search || "").trim().toLowerCase();
-      const filtered = keyword ? qualified.filter(row => [row.videoId, row.title, row.creator, row.product].some(value => String(value || "").toLowerCase().includes(keyword))) : qualified;
+      const filteredAll = keyword ? qualified.filter(row => [row.videoId, row.title, row.creator, row.product].some(value => String(value || "").toLowerCase().includes(keyword))) : qualified;
+      const filtered = filteredAll.filter(row => inDateRange(row.date, state.analysisStart, state.analysisEnd));
       const detailDates = [...new Set(filtered.map(row => row.date).filter(Boolean))].sort();
-      const coreDates = [...new Set(state.coreRows.map(row => row.date).filter(Boolean))].sort();
+      const activeCoreRows = state.coreRows.filter(row => inDateRange(row.date, state.analysisStart, state.analysisEnd));
+      const coreDates = [...new Set(activeCoreRows.map(row => row.date).filter(Boolean))].sort();
       const maxDate = detailDates.at(-1) || coreDates.at(-1) || "";
       const minDate = detailDates[0] || coreDates[0] || "";
       const recentCutoff = maxDate ? addDays(maxDate, -Math.max(1, num(state.recentDays, 7)) + 1) : "";
@@ -566,9 +630,13 @@
       const stableIds = new Set(stable.map(row => row.key));
       const overallBaseline = baselineFromAggregates("全部有效素材", aggregates);
       const stableBaseline = baselineFromAggregates("稳定出单素材", stable);
-      const core = state.coreRows.length ? coreBaseline(state.coreRows) : null;
+      const core = activeCoreRows.length ? coreBaseline(activeCoreRows) : null;
       const top = [...aggregates].sort((a, b) => (b.orders - a.orders) || (b.gmv - a.gmv)).slice(0, Math.max(1, num(state.topLimit, 30)));
       const recent = aggregates.filter(row => row.publishDate && recentCutoff && row.publishDate >= recentCutoff).sort((a, b) => (b.orders - a.orders) || String(b.publishDate).localeCompare(a.publishDate));
+      const periodCompare = {
+        base: periodSummary("基期", filteredAll, state.baseStart, state.baseEnd),
+        compare: periodSummary("对比期", filteredAll, state.compareStart, state.compareEnd)
+      };
       const trend = detailDates.map(date => {
         const allRows = filtered.filter(row => row.date === date);
         const stableRows = allRows.filter(row => stableIds.has(row.videoId || `${row.creator}_${row.title}`));
@@ -589,7 +657,7 @@
       const stableDetails = filtered
         .filter(row => stableIds.has(row.videoId || `${row.creator}_${row.title}`))
         .sort((a, b) => String(a.date).localeCompare(b.date) || num(b.orders) - num(a.orders));
-      return { qualified, aggregates, stable, overallBaseline, stableBaseline, core, top, recent, trend, stableDetails, maxDate, minDate, recentCutoff };
+      return { qualified, filteredAll, aggregates, stable, overallBaseline, stableBaseline, core, top, recent, trend, stableDetails, periodCompare, maxDate, minDate, recentCutoff };
     }
     function videoLabel(row) {
       const title = String(row.title || "").slice(0, 60);
@@ -597,6 +665,15 @@
     }
     function baselineRow(row) {
       return `<tr><td>${row.label}</td><td class="num">${row.videoCount}</td><td class="num">${money0.format(num(row.activeVideoDays))}</td><td class="num">${money(row.avgOrders)}</td><td class="num">${money(row.avgSalesQty)}</td><td class="num">${money0.format(num(row.avgW))}</td><td class="num">${money0.format(num(row.avgExposure))}</td><td class="num">${money0.format(num(row.avgClicks))}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.avgGmv)}</td><td class="num">${money(row.totalGmv)}</td></tr>`;
+    }
+    function periodCompareRow(row) {
+      return `<tr><td>${row.label}</td><td>${periodRangeText(row)}</td><td class="num">${money0.format(row.videoCount)}</td><td class="num">${money0.format(row.activeDays)}</td><td class="num">${money(row.totals.orders)}</td><td class="num">${money(row.avgOrders)}</td><td class="num">${money0.format(row.totals.w)}</td><td class="num">${money0.format(row.totals.exposure)}</td><td class="num">${money0.format(row.totals.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.totals.gmv)}</td></tr>`;
+    }
+    function deltaRow(base, compare) {
+      const orderDelta = compare.totals.orders - base.totals.orders;
+      const gmvDelta = compare.totals.gmv - base.totals.gmv;
+      const wDelta = compare.totals.w - base.totals.w;
+      return `<tr><td>变化</td><td>对比期 - 基期</td><td class="num">${money0.format(compare.videoCount - base.videoCount)}</td><td class="num">${money0.format(compare.activeDays - base.activeDays)}</td><td class="num ${orderDelta >= 0 ? "good" : "bad"}">${money(orderDelta)}</td><td class="num ${compare.avgOrders >= base.avgOrders ? "good" : "bad"}">${money(compare.avgOrders - base.avgOrders)}</td><td class="num ${wDelta >= 0 ? "good" : "bad"}">${money0.format(wDelta)}</td><td class="num">${money0.format(compare.totals.exposure - base.totals.exposure)}</td><td class="num">${money0.format(compare.totals.clicks - base.totals.clicks)}</td><td class="num">${rateDiffText(compare.ctr, base.ctr)}</td><td class="num">${rateDiffText(compare.conversion, base.conversion)}</td><td class="num ${gmvDelta >= 0 ? "good" : "bad"}">${money(gmvDelta)}</td></tr>`;
     }
     function shortVideoName(row) {
       const title = String(row.title || row.product || row.videoId || "未命名素材").replace(/\s+/g, " ").trim();
@@ -659,6 +736,17 @@
         topRecent ? `新素材里当前领先的是「${shortVideoName(topRecent)}」，日均订单 ${money(topRecent.avgOrders)}，CTR ${pct(topRecent.ctr)}，转化率 ${pct(topRecent.conversion)}。` : "",
         topRecent && stable.avgOrders ? `该素材日均订单约为稳定素材基准的 ${ratio(topRecent.avgOrders / stable.avgOrders)} 倍。` : ""
       ]) : analysisHtml([`当前筛选周期内没有识别到最近 ${num(state.recentDays, 7)} 天发布的新素材；可检查发布时间列或扩大新素材天数。`]);
+
+      const basePeriod = result.periodCompare.base;
+      const comparePeriod = result.periodCompare.compare;
+      const periodReady = (state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd);
+      const orderDelta = comparePeriod.totals.orders - basePeriod.totals.orders;
+      document.getElementById("periodCompareAnalysis").innerHTML = periodReady ? analysisHtml([
+        `基期 ${periodRangeText(basePeriod)}，对比期 ${periodRangeText(comparePeriod)}。`,
+        `对比期订单较基期${orderDelta >= 0 ? "增加" : "减少"} ${money(Math.abs(orderDelta))}，日均订单变化 ${money(comparePeriod.avgOrders - basePeriod.avgOrders)}。`,
+        `CTR ${rateDiffText(comparePeriod.ctr, basePeriod.ctr)}，转化率${rateDiffText(comparePeriod.conversion, basePeriod.conversion)}。`,
+        `对比期 GMV 较基期${comparePeriod.totals.gmv >= basePeriod.totals.gmv ? "增加" : "减少"} ${money(Math.abs(comparePeriod.totals.gmv - basePeriod.totals.gmv))}。`
+      ]) : analysisHtml(["设置基期和对比期后，这里会自动比较订单、W、曝光、CTR、转化率和 GMV 的变化。"]);
 
       const topOrders = result.top.reduce((sum, row) => sum + num(row.orders), 0);
       const topStableCount = result.top.filter(row => result.stable.some(item => item.key === row.key)).length;
@@ -728,6 +816,12 @@
       const result = computeAnalysis();
       document.getElementById("controls").innerHTML = `
         <label class="wide">搜索素材/达人/商品<input id="search" type="search" value="${escapeHtml(state.search)}" placeholder="输入关键词筛选"></label>
+        <label>分析开始<input id="analysisStart" type="date" value="${escapeHtml(state.analysisStart)}"></label>
+        <label>分析结束<input id="analysisEnd" type="date" value="${escapeHtml(state.analysisEnd)}"></label>
+        <label>基期开始<input id="baseStart" type="date" value="${escapeHtml(state.baseStart)}"></label>
+        <label>基期结束<input id="baseEnd" type="date" value="${escapeHtml(state.baseEnd)}"></label>
+        <label>对比期开始<input id="compareStart" type="date" value="${escapeHtml(state.compareStart)}"></label>
+        <label>对比期结束<input id="compareEnd" type="date" value="${escapeHtml(state.compareEnd)}"></label>
         <label>剔除低 W<input id="minW" type="number" step="1" value="${num(state.minW, 500)}"></label>
         <label>新素材天数<input id="recentDays" type="number" step="1" value="${num(state.recentDays, 7)}"></label>
         <label>稳定出单天数<input id="stableOrderDays" type="number" step="1" value="${num(state.stableMinOrderDays, 1)}"></label>
@@ -742,6 +836,12 @@
         ["最近新素材", money0.format(result.recent.length), result.recentCutoff ? `${result.recentCutoff} 后发布` : "待导入"]
       ];
       document.getElementById("kpis").innerHTML = kpis.map(([label, value, sub, cls = ""]) => `<div class="kpi"><div class="label">${label}</div><div class="value ${cls}">${value}</div><div class="sub">${sub}</div></div>`).join("");
+      const basePeriod = result.periodCompare.base;
+      const comparePeriod = result.periodCompare.compare;
+      const periodRows = [basePeriod, comparePeriod];
+      const periodReady = (state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd);
+      document.getElementById("periodCompareTable").innerHTML = `<tr><th>周期</th><th>日期范围</th><th class="num">素材数</th><th class="num">有数据天数</th><th class="num">订单</th><th class="num">日均订单</th><th class="num">W</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
+        (periodReady ? periodRows.map(periodCompareRow).join("") + deltaRow(basePeriod, comparePeriod) : `<tr><td colspan="12">设置基期和对比期后显示对比。</td></tr>`);
       renderCalendar(result);
       const baselines = [result.overallBaseline, result.stableBaseline, result.core].filter(Boolean);
       document.getElementById("baselineTable").innerHTML = `<tr><th>口径</th><th class="num">素材数</th><th class="num">活跃素材天</th><th class="num">日均订单</th><th class="num">日均成交件</th><th class="num">日均W</th><th class="num">日均商品曝光</th><th class="num">日均点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">日均GMV</th><th class="num">总GMV</th></tr>` + baselines.map(baselineRow).join("");
@@ -764,7 +864,9 @@
     }
     function bindControls() {
       [
-        ["search", "search", "text"], ["minW", "minW"], ["recentDays", "recentDays"],
+        ["search", "search", "text"], ["analysisStart", "analysisStart", "text"], ["analysisEnd", "analysisEnd", "text"],
+        ["baseStart", "baseStart", "text"], ["baseEnd", "baseEnd", "text"], ["compareStart", "compareStart", "text"], ["compareEnd", "compareEnd", "text"],
+        ["minW", "minW"], ["recentDays", "recentDays"],
         ["stableOrderDays", "stableMinOrderDays"], ["stableDailyOrders", "stableMinDailyOrders"], ["topLimit", "topLimit"]
       ].forEach(([id, key, type]) => {
         const el = document.getElementById(id);
@@ -783,11 +885,12 @@
       document.getElementById("importStatus").textContent = "正在读取视频明细表...";
       try {
         const result = parseVideoDetailWorkbook(await file.arrayBuffer());
-        state.detailRows = result.rows;
+        const before = state.detailRows.length;
+        state.detailRows = mergeRows(state.detailRows, result.rows, detailRowKey);
         state.detailFileName = file.name;
         saveState();
         render();
-        document.getElementById("importStatus").textContent = `视频明细表导入成功：${result.rows.length} 行（工作表：${result.sheetName}）。`;
+        document.getElementById("importStatus").textContent = `视频明细表导入成功：本次 ${result.rows.length} 行，累计 ${state.detailRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.detailRows.length)} 行；工作表：${result.sheetName}）。`;
       } catch (error) {
         document.getElementById("importStatus").textContent = `视频明细表导入失败：${error.message || error}`;
       } finally {
@@ -800,11 +903,12 @@
       document.getElementById("importStatus").textContent = "正在读取总表...";
       try {
         const result = parseVideoCoreWorkbook(await file.arrayBuffer());
-        state.coreRows = result.rows;
+        const before = state.coreRows.length;
+        state.coreRows = mergeRows(state.coreRows, result.rows, coreRowKey);
         state.coreFileName = file.name;
         saveState();
         render();
-        document.getElementById("importStatus").textContent = `总表导入成功：${result.rows.length} 行（工作表：${result.sheetName}）。`;
+        document.getElementById("importStatus").textContent = `总表导入成功：本次 ${result.rows.length} 行，累计 ${state.coreRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.coreRows.length)} 行；工作表：${result.sheetName}）。`;
       } catch (error) {
         document.getElementById("importStatus").textContent = `总表导入失败：${error.message || error}`;
       } finally {
