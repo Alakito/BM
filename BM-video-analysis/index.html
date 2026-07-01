@@ -148,7 +148,7 @@
       flex-wrap: wrap;
       margin-bottom: 10px;
     }
-    .chart-tools label {
+    .chart-tools > label {
       display: grid;
       gap: 5px;
       min-width: 160px;
@@ -157,6 +157,39 @@
       font-weight: 800;
     }
     .chart-tools .wide { min-width: 340px; }
+    .metric-group {
+      min-width: 260px;
+      display: grid;
+      gap: 6px;
+    }
+    .metric-title {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .metric-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .metric-options label {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 7px 9px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: #fff;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .metric-options input {
+      width: 14px;
+      height: 14px;
+      padding: 0;
+    }
     .chart-wrap {
       min-height: 320px;
       border: 1px solid var(--line);
@@ -316,8 +349,14 @@
         <h2>周期趋势变化</h2>
         <div class="panel-body">
           <div class="chart-tools">
-            <label>数值柱形<select id="trendValueMetric"></select></label>
-            <label>率指标折线<select id="trendRateMetric"></select></label>
+            <div class="metric-group">
+              <div class="metric-title">数值柱形（可多选）</div>
+              <div class="metric-options" id="trendValueMetrics"></div>
+            </div>
+            <div class="metric-group">
+              <div class="metric-title">率指标折线（可多选）</div>
+              <div class="metric-options" id="trendRateMetrics"></div>
+            </div>
           </div>
           <div class="chart-wrap" id="trendChart"></div>
           <div class="scroll"><table id="trendTable"></table></div>
@@ -329,8 +368,14 @@
         <div class="panel-body">
           <div class="chart-tools">
             <label class="wide">稳定素材筛选<select id="stableVideoFilter"></select></label>
-            <label>数值柱形<select id="stableValueMetric"></select></label>
-            <label>率指标折线<select id="stableRateMetric"></select></label>
+            <div class="metric-group">
+              <div class="metric-title">数值柱形（可多选）</div>
+              <div class="metric-options" id="stableValueMetrics"></div>
+            </div>
+            <div class="metric-group">
+              <div class="metric-title">率指标折线（可多选）</div>
+              <div class="metric-options" id="stableRateMetrics"></div>
+            </div>
           </div>
           <div class="chart-wrap" id="stableChart"></div>
           <div class="scroll"><table id="stableDetailTable"></table></div>
@@ -360,13 +405,12 @@
       compareStart: "",
       compareEnd: "",
       search: "",
-      trendValueMetric: "orders",
-      trendRateMetric: "ctr",
+      trendValueMetrics: ["orders"],
+      trendRateMetrics: ["ctr"],
       stableVideoKey: "",
-      stableValueMetric: "orders",
-      stableRateMetric: "conversion"
+      stableValueMetrics: ["orders"],
+      stableRateMetrics: ["conversion"]
     };
-    let state = loadState();
     const valueMetrics = [
       { key: "orders", label: "订单", picker: row => row.all.orders, format: money },
       { key: "salesQty", label: "成交件", picker: row => row.all.salesQty, format: money },
@@ -376,10 +420,10 @@
       { key: "gmv", label: "GMV", picker: row => row.all.gmv, format: money }
     ];
     const rateMetrics = [
-      { key: "none", label: "不显示率指标", picker: () => 0, format: () => "" },
       { key: "ctr", label: "CTR", picker: row => row.allCtr, format: pct },
       { key: "conversion", label: "转化率", picker: row => row.allConversion, format: pct }
     ];
+    let state = loadState();
 
     function projectId() {
       return new URLSearchParams(location.search).get("project") || localStorage.getItem("bm_current_project_v1") || "";
@@ -403,8 +447,22 @@
     function normalizeState(next) {
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
       ["minW", "recentDays", "stableMinOrderDays", "stableMinDailyOrders", "topLimit"].forEach(key => next[key] = num(next[key], defaultState[key]));
-      ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search", "trendValueMetric", "trendRateMetric", "stableVideoKey", "stableValueMetric", "stableRateMetric"].forEach(key => next[key] = String(next[key] || defaultState[key] || ""));
+      ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search", "stableVideoKey"].forEach(key => next[key] = String(next[key] || defaultState[key] || ""));
+      next.trendValueMetrics = normalizeMetricList(next.trendValueMetrics, next.trendValueMetric, defaultState.trendValueMetrics, valueMetrics);
+      next.trendRateMetrics = normalizeMetricList(next.trendRateMetrics, next.trendRateMetric, defaultState.trendRateMetrics, rateMetrics);
+      next.stableValueMetrics = normalizeMetricList(next.stableValueMetrics, next.stableValueMetric, defaultState.stableValueMetrics, valueMetrics);
+      next.stableRateMetrics = normalizeMetricList(next.stableRateMetrics, next.stableRateMetric, defaultState.stableRateMetrics, rateMetrics);
+      delete next.trendValueMetric;
+      delete next.trendRateMetric;
+      delete next.stableValueMetric;
+      delete next.stableRateMetric;
       return next;
+    }
+    function normalizeMetricList(value, legacyValue, fallback, metrics) {
+      const allowed = new Set(metrics.map(metric => metric.key));
+      const source = Array.isArray(value) ? value : (legacyValue ? [legacyValue] : fallback);
+      const cleaned = [...new Set(source.map(item => String(item || "")).filter(key => allowed.has(key)))];
+      return cleaned.length ? cleaned : [...fallback];
     }
     function num(v, fallback = 0) {
       const n = Number(v);
@@ -849,13 +907,15 @@
       }
       document.getElementById("calendar").innerHTML = cells.join("");
     }
-    function metricOptions(metrics, selected) {
-      return metrics.map(metric => `<option value="${metric.key}" ${metric.key === selected ? "selected" : ""}>${metric.label}</option>`).join("");
+    function metricCheckboxes(metrics, selected, group) {
+      const selectedSet = new Set(selected || []);
+      return metrics.map(metric => `<label><input class="metric-choice" data-group="${group}" type="checkbox" value="${metric.key}" ${selectedSet.has(metric.key) ? "checked" : ""}>${metric.label}</label>`).join("");
     }
-    function metricByKey(metrics, key) {
-      return metrics.find(metric => metric.key === key) || metrics[0];
+    function selectedMetrics(metrics, keys) {
+      const selectedSet = new Set(keys || []);
+      return metrics.filter(metric => selectedSet.has(metric.key));
     }
-    function chartSeriesData(baseRows, compareRows, valueMetric, rateMetric) {
+    function chartSeriesData(baseRows, compareRows) {
       const count = Math.max(baseRows.length, compareRows.length);
       return Array.from({ length: count }, (_, index) => {
         const base = baseRows[index] || null;
@@ -863,81 +923,121 @@
         return {
           index,
           label: [base?.date?.slice(5), compare?.date?.slice(5)].filter(Boolean).join(" / ") || `D${index + 1}`,
-          baseValue: base ? num(valueMetric.picker(base)) : 0,
-          compareValue: compare ? num(valueMetric.picker(compare)) : 0,
-          baseRate: base ? num(rateMetric.picker(base)) : 0,
-          compareRate: compare ? num(rateMetric.picker(compare)) : 0
+          base,
+          compare
         };
       });
     }
     function svgPath(points) {
       return points.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
     }
+    function chartLegend(items, x, y, itemWidth = 132) {
+      return items.map((item, index) => {
+        const col = index % 6;
+        const row = Math.floor(index / 6);
+        const lx = x + col * itemWidth;
+        const ly = y + row * 18;
+        if (item.type === "line") {
+          return `<line x1="${lx}" y1="${ly + 6}" x2="${lx + 18}" y2="${ly + 6}" stroke="${item.color}" stroke-width="3" ${item.dash ? `stroke-dasharray="${item.dash}"` : ""}/><text x="${lx + 24}" y="${ly + 10}" fill="#334155">${escapeHtml(item.label)}</text>`;
+        }
+        return `<rect x="${lx}" y="${ly}" width="12" height="12" rx="3" fill="${item.color}"/><text x="${lx + 18}" y="${ly + 10}" fill="#334155">${escapeHtml(item.label)}</text>`;
+      }).join("");
+    }
     function renderMetricChart(containerId, baseRows, compareRows, options) {
       const container = document.getElementById(containerId);
-      const valueMetric = metricByKey(valueMetrics, options.valueMetricKey);
-      const rateMetric = metricByKey(rateMetrics, options.rateMetricKey);
+      const activeValueMetrics = selectedMetrics(valueMetrics, options.valueMetricKeys);
+      const activeRateMetrics = selectedMetrics(rateMetrics, options.rateMetricKeys);
       const hasCompare = compareRows.length > 0;
-      const hasRate = rateMetric.key !== "none";
       if (!baseRows.length && !compareRows.length) {
         container.innerHTML = `<div class="chart-empty">导入视频明细表后显示趋势图。</div>`;
         return;
       }
+      if (!activeValueMetrics.length && !activeRateMetrics.length) {
+        container.innerHTML = `<div class="chart-empty">请选择至少一个柱形或折线指标。</div>`;
+        return;
+      }
       const width = 980;
       const height = 320;
-      const pad = { left: 62, right: hasRate ? 64 : 26, top: 34, bottom: 48 };
+      const pad = { left: 62, right: activeRateMetrics.length ? 64 : 26, top: activeValueMetrics.length + activeRateMetrics.length > 5 ? 70 : 54, bottom: 48 };
       const plotW = width - pad.left - pad.right;
       const plotH = height - pad.top - pad.bottom;
-      const data = chartSeriesData(baseRows, compareRows, valueMetric, rateMetric);
-      const maxValue = Math.max(1, ...data.flatMap(row => [row.baseValue, row.compareValue]));
-      const maxRate = Math.max(0.01, ...data.flatMap(row => [row.baseRate, row.compareRate]));
+      const data = chartSeriesData(baseRows, compareRows);
+      const maxValue = Math.max(1, ...data.flatMap(row => activeValueMetrics.flatMap(metric => [
+        row.base ? num(metric.picker(row.base)) : 0,
+        row.compare ? num(metric.picker(row.compare)) : 0
+      ])));
+      const maxRate = Math.max(0.01, ...data.flatMap(row => activeRateMetrics.flatMap(metric => [
+        row.base ? num(metric.picker(row.base)) : 0,
+        row.compare ? num(metric.picker(row.compare)) : 0
+      ])));
       const groupW = plotW / Math.max(data.length, 1);
-      const barW = Math.min(18, groupW / (hasCompare ? 4 : 2.4));
+      const barsPerGroup = activeValueMetrics.length * (hasCompare ? 2 : 1);
+      const barW = barsPerGroup ? Math.min(16, Math.max(4, groupW / (barsPerGroup + 1.8))) : 0;
       const yValue = value => pad.top + plotH - (num(value) / maxValue) * plotH;
       const yRate = value => pad.top + plotH - (num(value) / maxRate) * plotH;
       const xAt = index => pad.left + groupW * index + groupW / 2;
-      const baseRatePoints = data.map(row => ({ x: xAt(row.index), y: yRate(row.baseRate) }));
-      const compareRatePoints = data.map(row => ({ x: xAt(row.index), y: yRate(row.compareRate) }));
       const labelStep = Math.max(1, Math.ceil(data.length / 10));
+      const valueBaseColors = ["#ddd6fe", "#bfdbfe", "#fed7aa", "#bbf7d0", "#fecdd3", "#c7d2fe"];
+      const valueCompareColors = ["#5b45e8", "#2563eb", "#d97706", "#16a34a", "#e11d48", "#4f46e5"];
+      const rateBaseColors = ["#99f6e4", "#fde68a", "#fecdd3", "#bfdbfe"];
+      const rateCompareColors = ["#0f766e", "#b45309", "#be123c", "#1d4ed8"];
+      const activeValueBaseColors = hasCompare ? valueBaseColors : valueCompareColors;
+      const activeRateBaseColors = hasCompare ? rateBaseColors : rateCompareColors;
       const grid = [0, .25, .5, .75, 1].map(t => {
         const y = pad.top + plotH * t;
         const value = maxValue * (1 - t);
         return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="#e2e8f0"/><text x="${pad.left - 8}" y="${y + 4}" text-anchor="end" fill="#64748b" font-size="11">${money0.format(value)}</text>`;
       }).join("");
-      const rightAxis = hasRate ? [0, .5, 1].map(t => {
+      const rightAxis = activeRateMetrics.length ? [0, .5, 1].map(t => {
         const y = pad.top + plotH * (1 - t);
         return `<text x="${width - pad.right + 8}" y="${y + 4}" fill="#64748b" font-size="11">${(maxRate * t * 100).toFixed(1)}%</text>`;
       }).join("") : "";
       const bars = data.map(row => {
         const x = xAt(row.index);
-        const baseH = pad.top + plotH - yValue(row.baseValue);
-        const compareH = pad.top + plotH - yValue(row.compareValue);
-        const baseX = hasCompare ? x - barW - 2 : x - barW / 2;
-        const compareX = x + 2;
-        return `
-          <rect x="${baseX}" y="${yValue(row.baseValue)}" width="${barW}" height="${Math.max(0, baseH)}" rx="3" fill="#5b45e8"><title>${options.baseLabel} ${row.label} ${valueMetric.label}: ${valueMetric.format(row.baseValue)}</title></rect>
-          ${hasCompare ? `<rect x="${compareX}" y="${yValue(row.compareValue)}" width="${barW}" height="${Math.max(0, compareH)}" rx="3" fill="#c4b5fd"><title>${options.compareLabel} ${row.label} ${valueMetric.label}: ${valueMetric.format(row.compareValue)}</title></rect>` : ""}`;
+        const startX = x - (barsPerGroup * barW + Math.max(0, barsPerGroup - 1) * 2) / 2;
+        let barIndex = 0;
+        return activeValueMetrics.map((metric, metricIndex) => {
+          const baseValue = row.base ? num(metric.picker(row.base)) : 0;
+          const compareValue = row.compare ? num(metric.picker(row.compare)) : 0;
+          const baseX = startX + barIndex++ * (barW + 2);
+          const baseH = pad.top + plotH - yValue(baseValue);
+          const compareX = hasCompare ? startX + barIndex++ * (barW + 2) : 0;
+          const compareH = pad.top + plotH - yValue(compareValue);
+          return `
+            <rect x="${baseX}" y="${yValue(baseValue)}" width="${barW}" height="${Math.max(0, baseH)}" rx="3" fill="${activeValueBaseColors[metricIndex % activeValueBaseColors.length]}"><title>${options.baseLabel} ${row.label} ${metric.label}: ${metric.format(baseValue)}</title></rect>
+            ${hasCompare ? `<rect x="${compareX}" y="${yValue(compareValue)}" width="${barW}" height="${Math.max(0, compareH)}" rx="3" fill="${valueCompareColors[metricIndex % valueCompareColors.length]}"><title>${options.compareLabel} ${row.label} ${metric.label}: ${metric.format(compareValue)}</title></rect>` : ""}`;
+        }).join("");
       }).join("");
       const xLabels = data.map(row => row.index % labelStep === 0 ? `<text x="${xAt(row.index)}" y="${height - 18}" text-anchor="middle" fill="#64748b" font-size="11">${row.label}</text>` : "").join("");
-      const rateLines = hasRate ? `
-        <path d="${svgPath(baseRatePoints)}" fill="none" stroke="#0f766e" stroke-width="3"><title>${options.baseLabel} ${rateMetric.label}</title></path>
-        ${hasCompare ? `<path d="${svgPath(compareRatePoints)}" fill="none" stroke="#99f6e4" stroke-width="3" stroke-dasharray="6 5"><title>${options.compareLabel} ${rateMetric.label}</title></path>` : ""}
-        ${baseRatePoints.map((point, index) => `<circle cx="${point.x}" cy="${point.y}" r="3" fill="#0f766e"><title>${options.baseLabel} ${data[index].label} ${rateMetric.label}: ${rateMetric.format(data[index].baseRate)}</title></circle>`).join("")}
-        ${hasCompare ? compareRatePoints.map((point, index) => `<circle cx="${point.x}" cy="${point.y}" r="3" fill="#5eead4"><title>${options.compareLabel} ${data[index].label} ${rateMetric.label}: ${rateMetric.format(data[index].compareRate)}</title></circle>`).join("") : ""}` : "";
-      const legend = `
-        <g font-size="12" font-weight="800">
-          <rect x="${pad.left}" y="12" width="12" height="12" rx="3" fill="#5b45e8"/><text x="${pad.left + 18}" y="22" fill="#334155">${options.baseLabel} ${valueMetric.label}</text>
-          ${hasCompare ? `<rect x="${pad.left + 160}" y="12" width="12" height="12" rx="3" fill="#c4b5fd"/><text x="${pad.left + 178}" y="22" fill="#334155">${options.compareLabel} ${valueMetric.label}</text>` : ""}
-          ${hasRate ? `<line x1="${pad.left + 340}" y1="18" x2="${pad.left + 358}" y2="18" stroke="#0f766e" stroke-width="3"/><text x="${pad.left + 364}" y="22" fill="#334155">${options.baseLabel} ${rateMetric.label}</text>` : ""}
-          ${hasRate && hasCompare ? `<line x1="${pad.left + 500}" y1="18" x2="${pad.left + 518}" y2="18" stroke="#99f6e4" stroke-width="3" stroke-dasharray="6 5"/><text x="${pad.left + 524}" y="22" fill="#334155">${options.compareLabel} ${rateMetric.label}</text>` : ""}
-        </g>`;
+      const rateLines = activeRateMetrics.map((metric, metricIndex) => {
+        const basePoints = data.map(row => ({ x: xAt(row.index), y: yRate(row.base ? num(metric.picker(row.base)) : 0) }));
+        const comparePoints = data.map(row => ({ x: xAt(row.index), y: yRate(row.compare ? num(metric.picker(row.compare)) : 0) }));
+        const baseColor = activeRateBaseColors[metricIndex % activeRateBaseColors.length];
+        const compareColor = rateCompareColors[metricIndex % rateCompareColors.length];
+        return `
+          <path d="${svgPath(basePoints)}" fill="none" stroke="${baseColor}" stroke-width="3" ${hasCompare ? `stroke-dasharray="6 5"` : ""}><title>${options.baseLabel} ${metric.label}</title></path>
+          ${hasCompare ? `<path d="${svgPath(comparePoints)}" fill="none" stroke="${compareColor}" stroke-width="3"><title>${options.compareLabel} ${metric.label}</title></path>` : ""}
+          ${basePoints.map((point, index) => `<circle cx="${point.x}" cy="${point.y}" r="3" fill="${baseColor}"><title>${options.baseLabel} ${data[index].label} ${metric.label}: ${metric.format(data[index].base ? metric.picker(data[index].base) : 0)}</title></circle>`).join("")}
+          ${hasCompare ? comparePoints.map((point, index) => `<circle cx="${point.x}" cy="${point.y}" r="3" fill="${compareColor}"><title>${options.compareLabel} ${data[index].label} ${metric.label}: ${metric.format(data[index].compare ? metric.picker(data[index].compare) : 0)}</title></circle>`).join("") : ""}`;
+      }).join("");
+      const legendItems = [
+        ...activeValueMetrics.flatMap((metric, index) => [
+          { type: "bar", color: activeValueBaseColors[index % activeValueBaseColors.length], label: `${options.baseLabel} ${metric.label}` },
+          ...(hasCompare ? [{ type: "bar", color: valueCompareColors[index % valueCompareColors.length], label: `${options.compareLabel} ${metric.label}` }] : [])
+        ]),
+        ...activeRateMetrics.flatMap((metric, index) => [
+          { type: "line", color: activeRateBaseColors[index % activeRateBaseColors.length], dash: hasCompare ? "6 5" : "", label: `${options.baseLabel} ${metric.label}` },
+          ...(hasCompare ? [{ type: "line", color: rateCompareColors[index % rateCompareColors.length], label: `${options.compareLabel} ${metric.label}` }] : [])
+        ])
+      ];
+      const legend = `<g font-size="11" font-weight="800">${chartLegend(legendItems, pad.left, 12)}</g>`;
       container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${options.title}">
         <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"/>
         ${legend}
         ${grid}
         <line x1="${pad.left}" y1="${pad.top + plotH}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#cbd5e1"/>
         <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="#cbd5e1"/>
-        ${hasRate ? `<line x1="${width - pad.right}" y1="${pad.top}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#cbd5e1"/>${rightAxis}` : ""}
+        ${activeRateMetrics.length ? `<line x1="${width - pad.right}" y1="${pad.top}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#cbd5e1"/>${rightAxis}` : ""}
         ${bars}
         ${rateLines}
         ${xLabels}
@@ -946,8 +1046,8 @@
     function renderCharts(result) {
       const periodReady = (state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd);
       renderMetricChart("trendChart", periodReady ? result.periodCompare.base.trend : result.trend, periodReady ? result.periodCompare.compare.trend : [], {
-        valueMetricKey: state.trendValueMetric,
-        rateMetricKey: state.trendRateMetric,
+        valueMetricKeys: state.trendValueMetrics,
+        rateMetricKeys: state.trendRateMetrics,
         baseLabel: periodReady ? "基期" : "当前周期",
         compareLabel: "对比期",
         title: "周期趋势变化"
@@ -958,8 +1058,8 @@
       const baseStableRows = stableSource.filter(row => inDateRange(row.date, state.baseStart, state.baseEnd));
       const compareStableRows = stableSource.filter(row => inDateRange(row.date, state.compareStart, state.compareEnd));
       renderMetricChart("stableChart", periodReady ? dailyTrendFromRows(baseStableRows) : dailyTrendFromRows(currentStableRows), periodReady ? dailyTrendFromRows(compareStableRows) : [], {
-        valueMetricKey: state.stableValueMetric,
-        rateMetricKey: state.stableRateMetric,
+        valueMetricKeys: state.stableValueMetrics,
+        rateMetricKeys: state.stableRateMetrics,
         baseLabel: periodReady ? "基期" : "当前周期",
         compareLabel: "对比期",
         title: "稳定出单视频变化"
@@ -1019,10 +1119,10 @@
       result.visibleStableLabel = state.stableVideoKey ? shortVideoName(result.stable.find(row => row.key === state.stableVideoKey) || {}) : "";
       document.getElementById("stableDetailTable").innerHTML = `<tr><th>日期</th><th>视频素材</th><th class="num">订单</th><th class="num">成交件</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
         (visibleStableDetails.length ? visibleStableDetails.slice(0, 500).map(row => `<tr><td>${row.date}</td><td>${videoLabel(row)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td></tr>`).join("") : `<tr><td colspan="10">暂无稳定出单素材明细。</td></tr>`);
-      document.getElementById("trendValueMetric").innerHTML = metricOptions(valueMetrics, state.trendValueMetric);
-      document.getElementById("trendRateMetric").innerHTML = metricOptions(rateMetrics, state.trendRateMetric);
-      document.getElementById("stableValueMetric").innerHTML = metricOptions(valueMetrics, state.stableValueMetric);
-      document.getElementById("stableRateMetric").innerHTML = metricOptions(rateMetrics, state.stableRateMetric);
+      document.getElementById("trendValueMetrics").innerHTML = metricCheckboxes(valueMetrics, state.trendValueMetrics, "trendValueMetrics");
+      document.getElementById("trendRateMetrics").innerHTML = metricCheckboxes(rateMetrics, state.trendRateMetrics, "trendRateMetrics");
+      document.getElementById("stableValueMetrics").innerHTML = metricCheckboxes(valueMetrics, state.stableValueMetrics, "stableValueMetrics");
+      document.getElementById("stableRateMetrics").innerHTML = metricCheckboxes(rateMetrics, state.stableRateMetrics, "stableRateMetrics");
       const stableOptions = [`<option value="">全部稳定出单素材</option>`].concat(result.stable.map(row => {
         const key = row.key;
         return `<option value="${escapeHtml(key)}" ${key === state.stableVideoKey ? "selected" : ""}>${escapeHtml(row.videoId || "")} / ${escapeHtml(shortVideoName(row))}</option>`;
@@ -1038,8 +1138,7 @@
         ["baseStart", "baseStart", "text"], ["baseEnd", "baseEnd", "text"], ["compareStart", "compareStart", "text"], ["compareEnd", "compareEnd", "text"],
         ["minW", "minW"], ["recentDays", "recentDays"],
         ["stableOrderDays", "stableMinOrderDays"], ["stableDailyOrders", "stableMinDailyOrders"], ["topLimit", "topLimit"],
-        ["trendValueMetric", "trendValueMetric", "text"], ["trendRateMetric", "trendRateMetric", "text"],
-        ["stableVideoFilter", "stableVideoKey", "text"], ["stableValueMetric", "stableValueMetric", "text"], ["stableRateMetric", "stableRateMetric", "text"]
+        ["stableVideoFilter", "stableVideoKey", "text"]
       ].forEach(([id, key, type]) => {
         const el = document.getElementById(id);
         const handler = () => {
@@ -1049,6 +1148,15 @@
         };
         el.onchange = handler;
         if (type === "text") el.oninput = handler;
+      });
+      ["trendValueMetrics", "trendRateMetrics", "stableValueMetrics", "stableRateMetrics"].forEach(group => {
+        document.querySelectorAll(`.metric-choice[data-group="${group}"]`).forEach(input => {
+          input.onchange = () => {
+            state[group] = [...document.querySelectorAll(`.metric-choice[data-group="${group}"]:checked`)].map(item => item.value);
+            saveState();
+            render();
+          };
+        });
       });
     }
     document.getElementById("detailFile").onchange = async event => {
