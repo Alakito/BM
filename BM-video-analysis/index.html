@@ -631,8 +631,10 @@
       const peakWDay = result.trend.reduce((best, row) => !best || num(row.all.w) > num(best.all.w) ? row : best, null);
       const recentDays = result.trend.slice(-Math.min(7, result.trend.length));
       const previousDays = result.trend.slice(-Math.min(14, result.trend.length), -Math.min(7, result.trend.length));
+      const trendStart = result.trend[0]?.date || result.minDate;
+      const trendEnd = result.trend.at(-1)?.date || result.maxDate;
       document.getElementById("calendarAnalysis").innerHTML = result.trend.length ? analysisHtml([
-        `当前筛选后覆盖 ${result.minDate} 到 ${result.maxDate}，共有 ${result.trend.length} 天有视频数据，周期订单 ${money(totalOrders)}，GMV ${money(totalGmv)}。`,
+        `当前筛选后覆盖 ${trendStart} 到 ${trendEnd}，共有 ${result.trend.length} 天有视频数据，周期订单 ${money(totalOrders)}，GMV ${money(totalGmv)}。`,
         peakDay ? `订单峰值出现在 ${peakDay.date}，当天订单 ${money(peakDay.all.orders)}；W 峰值出现在 ${peakWDay.date}，当天 W ${money0.format(peakWDay.all.w)}。` : "",
         totalOrders ? `稳定出单素材贡献 ${money(stableOrders)} 单，占周期订单 ${pct(stableOrders / totalOrders)}。` : "当前还没有形成可判断的订单贡献。",
         result.trend.length > 7 ? trendChangeText(avgMetric(recentDays, row => row.all.orders), avgMetric(previousDays, row => row.all.orders), "最近 7 天日均订单") : ""
@@ -694,8 +696,9 @@
         return;
       }
       const byDate = new Map(result.trend.map(row => [row.date, row]));
-      const start = new Date(`${result.minDate}T00:00:00`);
-      const end = new Date(`${result.maxDate}T00:00:00`);
+      const trendDates = result.trend.map(row => row.date).filter(Boolean).sort();
+      const start = new Date(`${trendDates[0]}T00:00:00`);
+      const end = new Date(`${trendDates.at(-1)}T00:00:00`);
       const firstOffset = (start.getDay() + 6) % 7;
       const maxOrders = Math.max(...result.trend.map(row => row.all.orders), 1);
       const cells = weekdays.map(day => `<div class="weekday">${day}</div>`);
