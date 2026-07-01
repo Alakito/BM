@@ -549,7 +549,6 @@
       <button class="tab" data-tab="cartDeals">凑单订单</button>
       <button class="tab" data-tab="unitSpace">利润空间测算</button>
       <button class="tab" data-tab="giftMechanism">活动机制测算</button>
-      <button class="tab" data-tab="videoAnalysis">视频素材分析</button>
       <button class="tab" data-tab="optimize">优化模拟</button>
     </div>
 
@@ -775,69 +774,6 @@
           </div>
           <div class="scroll" style="margin-top:12px">
             <table class="sticky" id="cartDealResultTable"></table>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section id="videoAnalysis" class="view">
-      <div class="panel">
-        <h2>视频素材表现分析</h2>
-        <div class="panel-body">
-          <div class="actions" style="margin-bottom:10px">
-            <label class="file-label" for="videoDetailFile">导入视频明细表</label>
-            <input id="videoDetailFile" type="file" accept=".xlsx,.xls,.csv">
-            <label class="file-label" for="videoCoreFile">导入核心指标表</label>
-            <input id="videoCoreFile" type="file" accept=".xlsx,.xls,.csv">
-            <button class="small danger" id="clearVideoData">清空视频数据</button>
-            <span class="note" id="videoImportStatus">支持平台导出的 Video Performance List / Core Stats。</span>
-          </div>
-          <div class="analysis-filters" id="videoAnalysisControls"></div>
-          <p class="note">W 默认使用 VV。点击率优先读取“点击率（视频）”，缺失时按商品点击次数 ÷ VV 计算；转化率优先读取“CTOR（SKU 订单）”，缺失时按 SKU 订单数 ÷ 商品点击次数计算。</p>
-        </div>
-      </div>
-      <div class="kpis" id="videoKpis" style="margin-top:12px"></div>
-      <div class="grid two">
-        <div class="panel">
-          <h2>总体基准 vs 稳定出单基准</h2>
-          <div class="panel-body">
-            <div class="scroll compact-scroll">
-              <table class="sticky" id="videoBaselineTable"></table>
-            </div>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>最近新发布素材表现</h2>
-          <div class="panel-body">
-            <div class="scroll compact-scroll">
-              <table class="sticky" id="videoRecentTable"></table>
-            </div>
-          </div>
-        </div>
-      </div>
-      <div class="panel" style="margin-top:12px">
-        <h2>周期内销量好的视频素材</h2>
-        <div class="panel-body">
-          <div class="scroll">
-            <table class="sticky" id="videoTopTable"></table>
-          </div>
-        </div>
-      </div>
-      <div class="grid two" style="margin-top:12px">
-        <div class="panel">
-          <h2>周期趋势变化</h2>
-          <div class="panel-body">
-            <div class="scroll">
-              <table class="sticky" id="videoTrendTable"></table>
-            </div>
-          </div>
-        </div>
-        <div class="panel">
-          <h2>稳定出单视频变化详情</h2>
-          <div class="panel-body">
-            <div class="scroll">
-              <table class="sticky" id="videoStableDetailTable"></table>
-            </div>
           </div>
         </div>
       </div>
@@ -2355,6 +2291,7 @@
       return `<tr><td>${row.label}</td><td class="num">${row.videoCount}</td><td class="num">${money0.format(num(row.activeVideoDays))}</td><td class="num">${money(row.avgOrders)}</td><td class="num">${money(row.avgSalesQty)}</td><td class="num">${money0.format(num(row.avgW))}</td><td class="num">${money0.format(num(row.avgExposure))}</td><td class="num">${money0.format(num(row.avgClicks))}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.avgGmv)}</td><td class="num">${money(row.totalGmv)}</td></tr>`;
     }
     function renderVideoAnalysis() {
+      if (!document.getElementById("videoAnalysisControls")) return;
       const v = videoAnalysisState();
       const result = computeVideoAnalysis();
       document.getElementById("videoAnalysisControls").innerHTML = `
@@ -3051,7 +2988,8 @@
         e.target.value = "";
       }
     };
-    document.getElementById("videoDetailFile").onchange = async e => {
+    const videoDetailInput = document.getElementById("videoDetailFile");
+    if (videoDetailInput) videoDetailInput.onchange = async e => {
       const file = e.target.files?.[0];
       const status = document.getElementById("videoImportStatus");
       if (!file) return;
@@ -3070,7 +3008,8 @@
         e.target.value = "";
       }
     };
-    document.getElementById("videoCoreFile").onchange = async e => {
+    const videoCoreInput = document.getElementById("videoCoreFile");
+    if (videoCoreInput) videoCoreInput.onchange = async e => {
       const file = e.target.files?.[0];
       const status = document.getElementById("videoImportStatus");
       if (!file) return;
@@ -3089,7 +3028,8 @@
         e.target.value = "";
       }
     };
-    document.getElementById("clearVideoData").onclick = async () => {
+    const clearVideoDataBtn = document.getElementById("clearVideoData");
+    if (clearVideoDataBtn) clearVideoDataBtn.onclick = async () => {
       if (!confirm("确认清空当前项目的视频素材分析数据？")) return;
       state.videoAnalysis = structuredClone(defaultState.videoAnalysis);
       await persistStateNow("视频素材分析");

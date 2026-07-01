@@ -1,0 +1,709 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BM-TikTok Shop TH 视频素材分析工具</title>
+  <style>
+    :root {
+      --ink: #0f172a;
+      --muted: #64748b;
+      --line: #e2e8f0;
+      --panel: #ffffff;
+      --soft: #f8fafc;
+      --brand: #5b45e8;
+      --brand2: #7c3aed;
+      --green: #16a34a;
+      --red: #dc2626;
+      --amber: #d97706;
+      --shadow: 0 18px 36px rgba(15, 23, 42, .06);
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: linear-gradient(135deg, #f1f5ff, #eef8fb);
+      font-family: Inter, system-ui, "Microsoft YaHei", Arial, sans-serif;
+      font-size: 14px;
+    }
+    header {
+      background: rgba(255,255,255,.82);
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(10px);
+    }
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      padding: 24px 40px;
+    }
+    h1 { margin: 0; font-size: 26px; line-height: 1.25; font-weight: 900; }
+    .subtitle { margin: 8px 0 0; color: var(--muted); font-size: 13px; font-weight: 800; }
+    main { padding: 24px 40px 42px; }
+    .actions, .filters {
+      display: flex;
+      align-items: end;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    button, .file-label, input, select {
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+      font-weight: 800;
+    }
+    button, .file-label {
+      padding: 10px 12px;
+      cursor: pointer;
+      box-shadow: 0 1px 0 rgba(15,23,42,.03);
+    }
+    button.primary {
+      color: #fff;
+      border-color: transparent;
+      background: linear-gradient(135deg, var(--brand), var(--brand2));
+      box-shadow: 0 12px 24px rgba(91,69,232,.18);
+    }
+    button.danger { color: var(--red); border-color: #fecaca; }
+    button.small { border-radius: 999px; padding: 7px 10px; font-size: 12px; }
+    input[type=file] { display: none; }
+    input, select { min-width: 0; padding: 9px 11px; }
+    .filters label {
+      display: grid;
+      gap: 5px;
+      min-width: 140px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .filters .wide { min-width: 260px; }
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .panel h2 {
+      margin: 0;
+      padding: 16px 18px;
+      border-bottom: 1px solid var(--line);
+      font-size: 20px;
+      font-weight: 900;
+    }
+    .panel-body { padding: 16px; }
+    .note { color: var(--muted); font-size: 13px; line-height: 1.55; }
+    .kpis {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(160px, 1fr));
+      gap: 18px;
+      margin: 18px 0;
+    }
+    .kpi {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 22px;
+      min-height: 112px;
+      padding: 18px;
+      box-shadow: 0 15px 30px rgba(15,23,42,.06);
+    }
+    .kpi .label { color: var(--muted); font-size: 13px; font-weight: 800; }
+    .kpi .value { margin: 10px 0; font-size: 28px; font-weight: 900; }
+    .kpi .sub { color: var(--muted); font-size: 12px; }
+    .grid { display: grid; gap: 12px; }
+    .grid.two { grid-template-columns: minmax(420px, .95fr) minmax(520px, 1.25fr); }
+    .scroll { overflow: auto; max-height: 68vh; border: 1px solid var(--line); border-radius: 16px; background: #fff; }
+    .compact-scroll { max-height: 340px; }
+    table { width: 100%; min-width: 1120px; border-collapse: collapse; table-layout: auto; background: #fff; }
+    #topTable, #stableDetailTable { min-width: 1480px; }
+    #trendTable { min-width: 1320px; }
+    th, td { border: 0; border-bottom: 1px solid var(--line); padding: 10px 11px; vertical-align: middle; overflow-wrap: anywhere; }
+    th { position: sticky; top: 0; z-index: 2; background: #f8fafc; color: var(--ink); font-weight: 900; text-align: left; }
+    td.num, th.num { text-align: right; }
+    tr:hover td { background: #f8fafc; }
+    .good { color: var(--green); }
+    .bad { color: var(--red); }
+    .mid { color: var(--amber); }
+    .calendar-grid {
+      display: grid;
+      grid-template-columns: repeat(7, minmax(132px, 1fr));
+      gap: 10px;
+    }
+    .weekday {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+      text-align: center;
+      padding: 4px 0;
+    }
+    .day-card {
+      min-height: 142px;
+      padding: 12px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      display: grid;
+      gap: 7px;
+    }
+    .day-card.empty { background: transparent; border-color: transparent; box-shadow: none; }
+    .day-head { display: flex; justify-content: space-between; gap: 8px; align-items: center; font-weight: 900; }
+    .day-head span { color: var(--muted); font-size: 12px; }
+    .day-main { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .day-main b { font-size: 22px; }
+    .day-main span { color: var(--muted); font-size: 12px; font-weight: 800; }
+    .day-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; color: var(--muted); font-size: 12px; }
+    .bar { height: 7px; border-radius: 999px; background: #e2e8f0; overflow: hidden; }
+    .bar span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(135deg, var(--brand), var(--brand2)); }
+    @media (max-width: 980px) {
+      .topbar, main { padding: 16px; }
+      .grid.two, .kpis, .calendar-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="topbar">
+      <div>
+        <h1>BM-TikTok Shop TH 视频素材分析工具</h1>
+        <p class="subtitle">导入视频总表与日维度视频明细，查看素材基准、新视频、稳定出单素材和每日变化。</p>
+      </div>
+      <div class="actions">
+        <button class="primary" id="exportSnapshot">导出分析CSV</button>
+        <button class="danger" id="clearData">清空视频数据</button>
+      </div>
+    </div>
+  </header>
+  <main>
+    <section class="panel">
+      <h2>数据导入与分析口径</h2>
+      <div class="panel-body">
+        <div class="actions" style="margin-bottom:10px">
+          <label class="file-label" for="coreFile">导入总表</label>
+          <input id="coreFile" type="file" accept=".xlsx,.xls,.csv">
+          <label class="file-label" for="detailFile">导入视频明细表</label>
+          <input id="detailFile" type="file" accept=".xlsx,.xls,.csv">
+          <span class="note" id="importStatus">总表对应 Video Performance Core Stats；视频明细表对应 Video Performance List。</span>
+        </div>
+        <div class="filters" id="controls"></div>
+        <p class="note">W 默认使用 VV。点击率优先读取“点击率（视频）”，缺失时按商品点击次数 / VV 计算；转化率优先读取“CTOR（SKU 订单）”，缺失时按 SKU 订单数 / 商品点击次数计算。低 W 素材默认不参与基准计算。</p>
+      </div>
+    </section>
+
+    <div class="kpis" id="kpis"></div>
+
+    <section class="panel">
+      <h2>每日视频表现日历</h2>
+      <div class="panel-body">
+        <div class="calendar-grid" id="calendar"></div>
+      </div>
+    </section>
+
+    <div class="grid two" style="margin-top:12px">
+      <section class="panel">
+        <h2>总体基准 vs 稳定出单基准</h2>
+        <div class="panel-body">
+          <div class="scroll compact-scroll"><table id="baselineTable"></table></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>最近新发布素材表现</h2>
+        <div class="panel-body">
+          <div class="scroll compact-scroll"><table id="recentTable"></table></div>
+        </div>
+      </section>
+    </div>
+
+    <section class="panel" style="margin-top:12px">
+      <h2>周期内销量好的视频素材</h2>
+      <div class="panel-body">
+        <div class="scroll"><table id="topTable"></table></div>
+      </div>
+    </section>
+
+    <div class="grid two" style="margin-top:12px">
+      <section class="panel">
+        <h2>周期趋势变化</h2>
+        <div class="panel-body">
+          <div class="scroll"><table id="trendTable"></table></div>
+        </div>
+      </section>
+      <section class="panel">
+        <h2>稳定出单视频变化详情</h2>
+        <div class="panel-body">
+          <div class="scroll"><table id="stableDetailTable"></table></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <script src="../BM-profit-calculator/xlsx-js-style.min.js"></script>
+  <script>
+    const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
+    const money2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const stateKeyBase = "bmVideoMaterialAnalysisStateV1";
+    const defaultState = {
+      detailRows: [],
+      coreRows: [],
+      detailFileName: "",
+      coreFileName: "",
+      minW: 500,
+      recentDays: 7,
+      stableMinOrderDays: 1,
+      stableMinDailyOrders: 1,
+      topLimit: 30,
+      search: ""
+    };
+    let state = loadState();
+
+    function projectId() {
+      return new URLSearchParams(location.search).get("project") || localStorage.getItem("bm_current_project_v1") || "";
+    }
+    function scopedKey() {
+      const id = projectId();
+      return id ? `${stateKeyBase}_${id}` : stateKeyBase;
+    }
+    function loadState() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(scopedKey()) || "{}");
+        return normalizeState({ ...structuredClone(defaultState), ...parsed });
+      } catch {
+        return structuredClone(defaultState);
+      }
+    }
+    function saveState() {
+      state = normalizeState(state);
+      localStorage.setItem(scopedKey(), JSON.stringify(state));
+    }
+    function normalizeState(next) {
+      if (!Array.isArray(next.detailRows)) next.detailRows = [];
+      if (!Array.isArray(next.coreRows)) next.coreRows = [];
+      ["minW", "recentDays", "stableMinOrderDays", "stableMinDailyOrders", "topLimit"].forEach(key => next[key] = num(next[key], defaultState[key]));
+      return next;
+    }
+    function num(v, fallback = 0) {
+      const n = Number(v);
+      return Number.isFinite(n) ? n : fallback;
+    }
+    function money(v) { return money2.format(num(v)); }
+    function pct(v) { return (num(v) * 100).toFixed(2) + "%"; }
+    function ratio(v) { return Number.isFinite(num(v)) ? num(v).toFixed(2) : "0.00"; }
+    function escapeHtml(value) {
+      return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
+    }
+    function normalizeHeaderName(value) {
+      return String(value ?? "").replace(/\s+/g, "").replace(/[()（）:：฿￥¥]/g, "").toLowerCase();
+    }
+    function recordFromRow(headers, row) {
+      const record = {};
+      headers.forEach((header, index) => {
+        const key = normalizeHeaderName(header);
+        if (key) record[key] = row[index];
+      });
+      return record;
+    }
+    function recordValue(record, aliases) {
+      const keys = Object.keys(record);
+      for (const alias of aliases) {
+        const normalized = normalizeHeaderName(alias);
+        if (normalized in record) return record[normalized];
+      }
+      for (const alias of aliases) {
+        const normalized = normalizeHeaderName(alias);
+        const key = keys.find(item => item.includes(normalized) || normalized.includes(item));
+        if (key) return record[key];
+      }
+      return "";
+    }
+    function parseMetric(value) {
+      if (value == null || value === "") return 0;
+      if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+      const cleaned = String(value).replace(/,/g, "").replace(/[฿￥¥%]/g, "").trim();
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : 0;
+    }
+    function parseRateMetric(value, fallback = 0) {
+      if (value == null || value === "") return fallback;
+      const raw = String(value).trim();
+      const n = parseMetric(value);
+      if (!Number.isFinite(n)) return fallback;
+      if (raw.includes("%")) return n / 100;
+      return Math.abs(n) > 1 ? n / 100 : n;
+    }
+    function dateKey(value) {
+      if (!value) return "";
+      if (value instanceof Date && !Number.isNaN(value.getTime())) {
+        return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, "0")}-${String(value.getDate()).padStart(2, "0")}`;
+      }
+      const match = String(value).trim().match(/(20\d{2})[-/](\d{1,2})[-/](\d{1,2})/);
+      if (!match) return "";
+      return `${match[1]}-${match[2].padStart(2, "0")}-${match[3].padStart(2, "0")}`;
+    }
+    function parseReportDateFromText(value) {
+      const matches = [...String(value || "").matchAll(/20\d{2}[-/]\d{1,2}[-/]\d{1,2}/g)].map(match => match[0]);
+      return matches.length ? dateKey(matches[matches.length - 1]) : "";
+    }
+    function addDays(dateText, delta) {
+      const d = new Date(`${dateText}T00:00:00`);
+      if (Number.isNaN(d.getTime())) return "";
+      d.setDate(d.getDate() + delta);
+      return dateKey(d);
+    }
+    function daysBetween(a, b) {
+      const da = new Date(`${a}T00:00:00`);
+      const db = new Date(`${b}T00:00:00`);
+      if (Number.isNaN(da.getTime()) || Number.isNaN(db.getTime())) return null;
+      return Math.round((db - da) / 86400000);
+    }
+    function workbookRowsFromBuffer(buffer) {
+      const workbook = XLSX.read(buffer, { type: "array", cellDates: true, raw: false });
+      const sheetName = workbook.SheetNames[0];
+      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "", raw: false, blankrows: false });
+      return { rows, sheetName };
+    }
+    function findHeaderIndex(rows, requiredAliases) {
+      return rows.findIndex(row => {
+        const normalized = row.map(normalizeHeaderName).filter(Boolean);
+        return requiredAliases.every(alias => normalized.some(cell => cell.includes(normalizeHeaderName(alias))));
+      });
+    }
+    function parseVideoDetailWorkbook(buffer) {
+      const { rows, sheetName } = workbookRowsFromBuffer(buffer);
+      const headerIndex = findHeaderIndex(rows, ["视频ID", "VV"]);
+      if (headerIndex < 0) throw new Error("没有找到视频明细表头，请导入 Video Performance List。");
+      const headers = rows[headerIndex];
+      const reportDate = rows.slice(0, headerIndex).map(row => row.map(parseReportDateFromText).find(Boolean)).find(Boolean) || "";
+      const parsed = rows.slice(headerIndex + 1).map(row => {
+        const record = recordFromRow(headers, row);
+        const videoId = String(recordValue(record, ["视频ID", "Video ID"])).trim();
+        if (!videoId) return null;
+        const w = parseMetric(recordValue(record, ["VV", "W", "播放量"]));
+        const exposure = parseMetric(recordValue(record, ["商品曝光次数", "商品曝光数", "商品曝光"]));
+        const clicks = parseMetric(recordValue(record, ["商品点击次数", "商品点击数", "商品点击"]));
+        const orders = parseMetric(recordValue(record, ["视频 SKU 订单数", "归因 SKU 订单数", "SKU 订单数"]));
+        const salesQty = parseMetric(recordValue(record, ["视频商品成交件数", "视频归因成交件数", "成交件数"]));
+        const gmv = parseMetric(recordValue(record, ["视频 GMV", "视频归因 GMV", "GMV"]));
+        const ctrRaw = recordValue(record, ["点击率（视频）", "点击率", "CTR"]);
+        const conversionRaw = recordValue(record, ["CTOR（SKU 订单）", "CTOR", "转化率"]);
+        const publishDate = dateKey(recordValue(record, ["发布时间", "发布日期", "Publish Time"]));
+        const date = dateKey(recordValue(record, ["时间", "日期", "数据日期"])) || reportDate || publishDate;
+        return {
+          date,
+          publishDate,
+          creator: String(recordValue(record, ["达人昵称", "达人", "Creator"])).trim(),
+          creatorId: String(recordValue(record, ["达人ID", "Creator ID"])).trim(),
+          title: String(recordValue(record, ["视频信息", "视频标题", "Video Info"])).trim(),
+          videoId,
+          product: String(recordValue(record, ["商品", "Product"])).trim(),
+          w,
+          likes: parseMetric(recordValue(record, ["点赞数"])),
+          comments: parseMetric(recordValue(record, ["评论数"])),
+          shares: parseMetric(recordValue(record, ["分享数"])),
+          exposure,
+          clicks,
+          orders,
+          salesQty,
+          gmv,
+          gpm: parseMetric(recordValue(record, ["GPM"])),
+          ctr: ctrRaw === "" ? (w > 0 ? clicks / w : 0) : parseRateMetric(ctrRaw),
+          conversion: conversionRaw === "" ? (clicks > 0 ? orders / clicks : 0) : parseRateMetric(conversionRaw),
+          diagnosis: String(recordValue(record, ["诊断"])).trim()
+        };
+      }).filter(Boolean);
+      if (!parsed.length) throw new Error("视频明细表没有可导入的数据。");
+      return { rows: parsed, sheetName };
+    }
+    function parseVideoCoreWorkbook(buffer) {
+      const { rows, sheetName } = workbookRowsFromBuffer(buffer);
+      const headerIndex = findHeaderIndex(rows, ["时间", "VV"]);
+      if (headerIndex < 0) throw new Error("没有找到总表表头，请导入 Video Performance Core Stats。");
+      const headers = rows[headerIndex];
+      const parsed = rows.slice(headerIndex + 1).map(row => {
+        const record = recordFromRow(headers, row);
+        const date = dateKey(recordValue(record, ["时间", "日期"]));
+        if (!date) return null;
+        const w = parseMetric(recordValue(record, ["VV", "W", "播放量"]));
+        const exposure = parseMetric(recordValue(record, ["商品曝光数", "商品曝光次数", "商品曝光"]));
+        const clicks = parseMetric(recordValue(record, ["商品点击数", "商品点击次数", "商品点击"]));
+        const orders = parseMetric(recordValue(record, ["视频 SKU 订单数", "归因 SKU 订单数", "SKU 订单数"]));
+        const gmv = parseMetric(recordValue(record, ["视频 GMV", "视频归因 GMV", "GMV"]));
+        return {
+          date,
+          w,
+          gmv,
+          gpm: parseMetric(recordValue(record, ["GPM"])),
+          orders,
+          exposure,
+          clicks,
+          ctr: parseRateMetric(recordValue(record, ["点击率（视频）", "点击率", "CTR"]), w > 0 ? clicks / w : 0),
+          conversion: parseRateMetric(recordValue(record, ["CTOR（SKU 订单）", "CTOR", "转化率"]), clicks > 0 ? orders / clicks : 0)
+        };
+      }).filter(Boolean);
+      if (!parsed.length) throw new Error("总表没有可导入的数据。");
+      return { rows: parsed, sheetName };
+    }
+    function sumVideoRows(rows) {
+      return rows.reduce((acc, row) => {
+        acc.w += num(row.w); acc.exposure += num(row.exposure); acc.clicks += num(row.clicks);
+        acc.orders += num(row.orders); acc.salesQty += num(row.salesQty); acc.gmv += num(row.gmv);
+        return acc;
+      }, { w: 0, exposure: 0, clicks: 0, orders: 0, salesQty: 0, gmv: 0 });
+    }
+    function baselineFromAggregates(label, aggregates) {
+      const activeVideoDays = aggregates.reduce((sum, row) => sum + row.activeDays, 0);
+      const totals = aggregates.reduce((acc, row) => {
+        acc.w += row.w; acc.exposure += row.exposure; acc.clicks += row.clicks; acc.orders += row.orders; acc.salesQty += row.salesQty; acc.gmv += row.gmv;
+        return acc;
+      }, { w: 0, exposure: 0, clicks: 0, orders: 0, salesQty: 0, gmv: 0 });
+      const denominator = activeVideoDays || aggregates.length || 1;
+      return {
+        label, videoCount: aggregates.length, activeVideoDays,
+        avgOrders: totals.orders / denominator,
+        avgSalesQty: totals.salesQty / denominator,
+        avgW: totals.w / denominator,
+        avgExposure: totals.exposure / denominator,
+        avgClicks: totals.clicks / denominator,
+        ctr: totals.w > 0 ? totals.clicks / totals.w : 0,
+        conversion: totals.clicks > 0 ? totals.orders / totals.clicks : 0,
+        avgGmv: totals.gmv / denominator,
+        totalOrders: totals.orders,
+        totalGmv: totals.gmv
+      };
+    }
+    function coreBaseline(rows) {
+      const days = rows.length || 1;
+      const totals = rows.reduce((acc, row) => {
+        acc.w += num(row.w); acc.exposure += num(row.exposure); acc.clicks += num(row.clicks); acc.orders += num(row.orders); acc.gmv += num(row.gmv);
+        return acc;
+      }, { w: 0, exposure: 0, clicks: 0, orders: 0, gmv: 0 });
+      return {
+        label: "总表整体指标", videoCount: "", activeVideoDays: days,
+        avgOrders: totals.orders / days,
+        avgSalesQty: "",
+        avgW: totals.w / days,
+        avgExposure: totals.exposure / days,
+        avgClicks: totals.clicks / days,
+        ctr: totals.w > 0 ? totals.clicks / totals.w : 0,
+        conversion: totals.clicks > 0 ? totals.orders / totals.clicks : 0,
+        avgGmv: totals.gmv / days,
+        totalOrders: totals.orders,
+        totalGmv: totals.gmv
+      };
+    }
+    function computeAnalysis() {
+      const qualified = state.detailRows.filter(row => num(row.w) >= num(state.minW, 500));
+      const keyword = String(state.search || "").trim().toLowerCase();
+      const filtered = keyword ? qualified.filter(row => [row.videoId, row.title, row.creator, row.product].some(value => String(value || "").toLowerCase().includes(keyword))) : qualified;
+      const maxDate = [...filtered.map(r => r.date), ...state.coreRows.map(r => r.date)].filter(Boolean).sort().at(-1) || "";
+      const minDate = [...filtered.map(r => r.date), ...state.coreRows.map(r => r.date)].filter(Boolean).sort()[0] || "";
+      const recentCutoff = maxDate ? addDays(maxDate, -Math.max(1, num(state.recentDays, 7)) + 1) : "";
+      const groups = new Map();
+      filtered.forEach(row => {
+        const key = row.videoId || `${row.creator}_${row.title}`;
+        if (!groups.has(key)) groups.set(key, { key, videoId: row.videoId, creator: row.creator, title: row.title, product: row.product, publishDate: row.publishDate, dates: new Set(), orderDates: new Set(), w: 0, exposure: 0, clicks: 0, orders: 0, salesQty: 0, gmv: 0 });
+        const agg = groups.get(key);
+        if (row.publishDate && (!agg.publishDate || row.publishDate < agg.publishDate)) agg.publishDate = row.publishDate;
+        if (row.date) agg.dates.add(row.date);
+        if (num(row.orders) > 0 && row.date) agg.orderDates.add(row.date);
+        agg.w += num(row.w); agg.exposure += num(row.exposure); agg.clicks += num(row.clicks); agg.orders += num(row.orders); agg.salesQty += num(row.salesQty); agg.gmv += num(row.gmv);
+      });
+      const aggregates = [...groups.values()].map(row => {
+        const activeDays = Math.max(row.dates.size, 1);
+        return {
+          ...row,
+          activeDays,
+          orderDays: row.orderDates.size,
+          avgOrders: row.orders / activeDays,
+          avgSalesQty: row.salesQty / activeDays,
+          avgW: row.w / activeDays,
+          avgExposure: row.exposure / activeDays,
+          avgClicks: row.clicks / activeDays,
+          ctr: row.w > 0 ? row.clicks / row.w : 0,
+          conversion: row.clicks > 0 ? row.orders / row.clicks : 0,
+          avgGmv: row.gmv / activeDays,
+          ageDays: row.publishDate && maxDate ? daysBetween(row.publishDate, maxDate) : null
+        };
+      });
+      const stable = aggregates.filter(row => row.orderDays >= num(state.stableMinOrderDays, 1) && row.avgOrders >= num(state.stableMinDailyOrders, 1));
+      const stableIds = new Set(stable.map(row => row.key));
+      const overallBaseline = baselineFromAggregates("全部有效素材", aggregates);
+      const stableBaseline = baselineFromAggregates("稳定出单素材", stable);
+      const core = state.coreRows.length ? coreBaseline(state.coreRows) : null;
+      const top = [...aggregates].sort((a, b) => (b.orders - a.orders) || (b.gmv - a.gmv)).slice(0, Math.max(1, num(state.topLimit, 30)));
+      const recent = aggregates.filter(row => row.publishDate && recentCutoff && row.publishDate >= recentCutoff).sort((a, b) => (b.orders - a.orders) || String(b.publishDate).localeCompare(a.publishDate));
+      const dates = [...new Set(filtered.map(row => row.date).filter(Boolean))].sort();
+      const trend = dates.map(date => {
+        const allRows = filtered.filter(row => row.date === date);
+        const stableRows = allRows.filter(row => stableIds.has(row.videoId || `${row.creator}_${row.title}`));
+        const all = sumVideoRows(allRows);
+        const stableSum = sumVideoRows(stableRows);
+        return {
+          date,
+          videos: new Set(allRows.map(row => row.videoId)).size,
+          stableVideos: new Set(stableRows.map(row => row.videoId)).size,
+          all,
+          stable: stableSum,
+          allCtr: all.w > 0 ? all.clicks / all.w : 0,
+          allConversion: all.clicks > 0 ? all.orders / all.clicks : 0,
+          stableCtr: stableSum.w > 0 ? stableSum.clicks / stableSum.w : 0,
+          stableConversion: stableSum.clicks > 0 ? stableSum.orders / stableSum.clicks : 0
+        };
+      });
+      const stableDetails = filtered
+        .filter(row => stableIds.has(row.videoId || `${row.creator}_${row.title}`))
+        .sort((a, b) => String(a.date).localeCompare(b.date) || num(b.orders) - num(a.orders));
+      return { qualified, aggregates, stable, overallBaseline, stableBaseline, core, top, recent, trend, stableDetails, maxDate, minDate, recentCutoff };
+    }
+    function videoLabel(row) {
+      const title = String(row.title || "").slice(0, 60);
+      return `${escapeHtml(row.videoId || "")}<br><span class="note">${escapeHtml(row.creator || "")}${title ? " / " + escapeHtml(title) : ""}</span>`;
+    }
+    function baselineRow(row) {
+      return `<tr><td>${row.label}</td><td class="num">${row.videoCount}</td><td class="num">${money0.format(num(row.activeVideoDays))}</td><td class="num">${money(row.avgOrders)}</td><td class="num">${money(row.avgSalesQty)}</td><td class="num">${money0.format(num(row.avgW))}</td><td class="num">${money0.format(num(row.avgExposure))}</td><td class="num">${money0.format(num(row.avgClicks))}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.avgGmv)}</td><td class="num">${money(row.totalGmv)}</td></tr>`;
+    }
+    function renderCalendar(result) {
+      const weekdays = ["一", "二", "三", "四", "五", "六", "日"];
+      if (!result.trend.length) {
+        document.getElementById("calendar").innerHTML = `<div class="note">导入视频明细表后显示每日变化。</div>`;
+        return;
+      }
+      const byDate = new Map(result.trend.map(row => [row.date, row]));
+      const start = new Date(`${result.minDate}T00:00:00`);
+      const end = new Date(`${result.maxDate}T00:00:00`);
+      const firstOffset = (start.getDay() + 6) % 7;
+      const maxOrders = Math.max(...result.trend.map(row => row.all.orders), 1);
+      const cells = weekdays.map(day => `<div class="weekday">${day}</div>`);
+      for (let i = 0; i < firstOffset; i++) cells.push(`<div class="day-card empty"></div>`);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const key = dateKey(d);
+        const row = byDate.get(key);
+        if (!row) {
+          cells.push(`<div class="day-card"><div class="day-head">${key.slice(5)}<span>无数据</span></div></div>`);
+          continue;
+        }
+        const orderShare = row.all.orders / maxOrders * 100;
+        cells.push(`<div class="day-card">
+          <div class="day-head">${key.slice(5)}<span>${row.videos} 条素材</span></div>
+          <div class="day-main"><b>${money(row.all.orders)}</b><span>订单</span></div>
+          <div class="bar"><span style="width:${Math.max(4, orderShare)}%"></span></div>
+          <div class="day-metrics">
+            <span>W ${money0.format(row.all.w)}</span><span>曝光 ${money0.format(row.all.exposure)}</span>
+            <span>CTR ${pct(row.allCtr)}</span><span>转化 ${pct(row.allConversion)}</span>
+            <span class="good">稳单 ${money(row.stable.orders)}</span><span>GMV ${money(row.all.gmv)}</span>
+          </div>
+        </div>`);
+      }
+      document.getElementById("calendar").innerHTML = cells.join("");
+    }
+    function render() {
+      const result = computeAnalysis();
+      document.getElementById("controls").innerHTML = `
+        <label class="wide">搜索素材/达人/商品<input id="search" type="search" value="${escapeHtml(state.search)}" placeholder="输入关键词筛选"></label>
+        <label>剔除低 W<input id="minW" type="number" step="1" value="${num(state.minW, 500)}"></label>
+        <label>新素材天数<input id="recentDays" type="number" step="1" value="${num(state.recentDays, 7)}"></label>
+        <label>稳定出单天数<input id="stableOrderDays" type="number" step="1" value="${num(state.stableMinOrderDays, 1)}"></label>
+        <label>稳定日均订单<input id="stableDailyOrders" type="number" step="0.01" value="${num(state.stableMinDailyOrders, 1)}"></label>
+        <label>Top条数<input id="topLimit" type="number" step="1" value="${num(state.topLimit, 30)}"></label>
+        <span class="note">明细 ${state.detailRows.length} 行 / 总表 ${state.coreRows.length} 行</span>`;
+      const kpis = [
+        ["有效素材数", money0.format(result.aggregates.length), `剔除 W < ${num(state.minW, 500)}`],
+        ["稳定出单素材", money0.format(result.stable.length), `日均订单 >= ${num(state.stableMinDailyOrders, 1)}`],
+        ["周期总订单", money(result.overallBaseline.totalOrders), "SKU 订单数"],
+        ["稳定素材日均销量", money(result.stableBaseline.avgOrders), "按素材活跃天均值", result.stableBaseline.avgOrders > 0 ? "good" : "mid"],
+        ["最近新素材", money0.format(result.recent.length), result.recentCutoff ? `${result.recentCutoff} 后发布` : "待导入"]
+      ];
+      document.getElementById("kpis").innerHTML = kpis.map(([label, value, sub, cls = ""]) => `<div class="kpi"><div class="label">${label}</div><div class="value ${cls}">${value}</div><div class="sub">${sub}</div></div>`).join("");
+      renderCalendar(result);
+      const baselines = [result.overallBaseline, result.stableBaseline, result.core].filter(Boolean);
+      document.getElementById("baselineTable").innerHTML = `<tr><th>口径</th><th class="num">素材数</th><th class="num">活跃素材天</th><th class="num">日均订单</th><th class="num">日均成交件</th><th class="num">日均W</th><th class="num">日均商品曝光</th><th class="num">日均点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">日均GMV</th><th class="num">总GMV</th></tr>` + baselines.map(baselineRow).join("");
+      document.getElementById("recentTable").innerHTML = `<tr><th>视频素材</th><th>发布时间</th><th class="num">发布天数</th><th class="num">日均订单</th><th class="num">vs稳定订单</th><th class="num">日均W</th><th class="num">日均曝光</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
+        (result.recent.length ? result.recent.map(row => {
+          const orderRatio = result.stableBaseline.avgOrders > 0 ? row.avgOrders / result.stableBaseline.avgOrders : 0;
+          return `<tr><td>${videoLabel(row)}</td><td>${row.publishDate || ""}</td><td class="num">${row.ageDays == null ? "" : row.ageDays + 1}</td><td class="num">${money(row.avgOrders)}</td><td class="num ${orderRatio >= 1 ? "good" : "mid"}">${ratio(orderRatio)}x</td><td class="num">${money0.format(row.avgW)}</td><td class="num">${money0.format(row.avgExposure)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td></tr>`;
+        }).join("") : `<tr><td colspan="10" class="calc-cell center">当前周期内没有识别到最近新发布素材。</td></tr>`);
+      document.getElementById("topTable").innerHTML = `<tr><th>视频素材</th><th>发布时间</th><th class="num">活跃天</th><th class="num">出单天</th><th class="num">总订单</th><th class="num">日均订单</th><th class="num">总成交件</th><th class="num">W</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th>状态</th></tr>` +
+        (result.top.length ? result.top.map(row => {
+          const stable = result.stable.some(item => item.key === row.key);
+          return `<tr><td>${videoLabel(row)}</td><td>${row.publishDate || ""}</td><td class="num">${row.activeDays}</td><td class="num">${row.orderDays}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.avgOrders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td><td class="${stable ? "good" : "mid"}">${stable ? "稳定出单" : "观察"}</td></tr>`;
+        }).join("") : `<tr><td colspan="14">导入视频明细表后显示。</td></tr>`);
+      document.getElementById("trendTable").innerHTML = `<tr><th>日期</th><th class="num">素材数</th><th class="num">订单</th><th class="num">W</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th class="num">稳定订单</th><th class="num">稳定W</th><th class="num">稳定曝光</th><th class="num">稳定CTR</th><th class="num">稳定转化率</th></tr>` +
+        (result.trend.length ? result.trend.map(row => `<tr><td>${row.date}</td><td class="num">${row.videos}</td><td class="num">${money(row.all.orders)}</td><td class="num">${money0.format(row.all.w)}</td><td class="num">${money0.format(row.all.exposure)}</td><td class="num">${money0.format(row.all.clicks)}</td><td class="num">${pct(row.allCtr)}</td><td class="num">${pct(row.allConversion)}</td><td class="num">${money(row.all.gmv)}</td><td class="num">${money(row.stable.orders)}</td><td class="num">${money0.format(row.stable.w)}</td><td class="num">${money0.format(row.stable.exposure)}</td><td class="num">${pct(row.stableCtr)}</td><td class="num">${pct(row.stableConversion)}</td></tr>`).join("") : `<tr><td colspan="14">导入视频明细表后显示趋势。</td></tr>`);
+      document.getElementById("stableDetailTable").innerHTML = `<tr><th>日期</th><th>视频素材</th><th class="num">订单</th><th class="num">成交件</th><th class="num">W</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
+        (result.stableDetails.length ? result.stableDetails.slice(0, 500).map(row => `<tr><td>${row.date}</td><td>${videoLabel(row)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td></tr>`).join("") : `<tr><td colspan="10">暂无稳定出单素材明细。</td></tr>`);
+      bindControls();
+    }
+    function bindControls() {
+      [
+        ["search", "search", "text"], ["minW", "minW"], ["recentDays", "recentDays"],
+        ["stableOrderDays", "stableMinOrderDays"], ["stableDailyOrders", "stableMinDailyOrders"], ["topLimit", "topLimit"]
+      ].forEach(([id, key, type]) => {
+        const el = document.getElementById(id);
+        const handler = () => {
+          state[key] = type === "text" ? el.value : num(el.value);
+          saveState();
+          render();
+        };
+        el.onchange = handler;
+        if (type === "text") el.oninput = handler;
+      });
+    }
+    document.getElementById("detailFile").onchange = async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      document.getElementById("importStatus").textContent = "正在读取视频明细表...";
+      try {
+        const result = parseVideoDetailWorkbook(await file.arrayBuffer());
+        state.detailRows = result.rows;
+        state.detailFileName = file.name;
+        saveState();
+        render();
+        document.getElementById("importStatus").textContent = `视频明细表导入成功：${result.rows.length} 行（工作表：${result.sheetName}）。`;
+      } catch (error) {
+        document.getElementById("importStatus").textContent = `视频明细表导入失败：${error.message || error}`;
+      } finally {
+        event.target.value = "";
+      }
+    };
+    document.getElementById("coreFile").onchange = async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      document.getElementById("importStatus").textContent = "正在读取总表...";
+      try {
+        const result = parseVideoCoreWorkbook(await file.arrayBuffer());
+        state.coreRows = result.rows;
+        state.coreFileName = file.name;
+        saveState();
+        render();
+        document.getElementById("importStatus").textContent = `总表导入成功：${result.rows.length} 行（工作表：${result.sheetName}）。`;
+      } catch (error) {
+        document.getElementById("importStatus").textContent = `总表导入失败：${error.message || error}`;
+      } finally {
+        event.target.value = "";
+      }
+    };
+    document.getElementById("clearData").onclick = () => {
+      if (!confirm("确认清空当前项目的视频素材分析数据？")) return;
+      state = structuredClone(defaultState);
+      saveState();
+      render();
+      document.getElementById("importStatus").textContent = "已清空视频数据。";
+    };
+    document.getElementById("exportSnapshot").onclick = () => {
+      const result = computeAnalysis();
+      const headers = ["类型", "日期/视频ID", "达人", "发布时间", "订单", "成交件", "W", "商品曝光", "点击", "CTR", "转化率", "GMV"];
+      const rows = [
+        ...result.trend.map(row => ["每日趋势", row.date, "", "", row.all.orders, row.all.salesQty, row.all.w, row.all.exposure, row.all.clicks, row.allCtr, row.allConversion, row.all.gmv]),
+        ...result.top.map(row => ["Top素材", row.videoId, row.creator, row.publishDate, row.orders, row.salesQty, row.w, row.exposure, row.clicks, row.ctr, row.conversion, row.gmv])
+      ];
+      const csv = [headers, ...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(new Blob(["\ufeff" + csv], { type: "text/csv;charset=utf-8" }));
+      a.download = `video-material-analysis-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    };
+    render();
+  </script>
+</body>
+</html>
