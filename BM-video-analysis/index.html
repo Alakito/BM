@@ -530,8 +530,10 @@
       const qualified = state.detailRows.filter(row => num(row.w) >= num(state.minW, 500));
       const keyword = String(state.search || "").trim().toLowerCase();
       const filtered = keyword ? qualified.filter(row => [row.videoId, row.title, row.creator, row.product].some(value => String(value || "").toLowerCase().includes(keyword))) : qualified;
-      const maxDate = [...filtered.map(r => r.date), ...state.coreRows.map(r => r.date)].filter(Boolean).sort().at(-1) || "";
-      const minDate = [...filtered.map(r => r.date), ...state.coreRows.map(r => r.date)].filter(Boolean).sort()[0] || "";
+      const detailDates = [...new Set(filtered.map(row => row.date).filter(Boolean))].sort();
+      const coreDates = [...new Set(state.coreRows.map(row => row.date).filter(Boolean))].sort();
+      const maxDate = detailDates.at(-1) || coreDates.at(-1) || "";
+      const minDate = detailDates[0] || coreDates[0] || "";
       const recentCutoff = maxDate ? addDays(maxDate, -Math.max(1, num(state.recentDays, 7)) + 1) : "";
       const groups = new Map();
       filtered.forEach(row => {
@@ -567,8 +569,7 @@
       const core = state.coreRows.length ? coreBaseline(state.coreRows) : null;
       const top = [...aggregates].sort((a, b) => (b.orders - a.orders) || (b.gmv - a.gmv)).slice(0, Math.max(1, num(state.topLimit, 30)));
       const recent = aggregates.filter(row => row.publishDate && recentCutoff && row.publishDate >= recentCutoff).sort((a, b) => (b.orders - a.orders) || String(b.publishDate).localeCompare(a.publishDate));
-      const dates = [...new Set(filtered.map(row => row.date).filter(Boolean))].sort();
-      const trend = dates.map(date => {
+      const trend = detailDates.map(date => {
         const allRows = filtered.filter(row => row.date === date);
         const stableRows = allRows.filter(row => stableIds.has(row.videoId || `${row.creator}_${row.title}`));
         const all = sumVideoRows(allRows);
