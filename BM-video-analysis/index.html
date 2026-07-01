@@ -209,7 +209,7 @@
           <span class="note" id="importStatus">总表对应 Video Performance Core Stats；视频明细表对应 Video Performance List。</span>
         </div>
         <div class="filters" id="controls"></div>
-        <p class="note">W 默认使用 VV。点击率优先读取“点击率（视频）”，缺失时按商品点击次数 / VV 计算；转化率优先读取“CTOR（SKU 订单）”，缺失时按 SKU 订单数 / 商品点击次数计算。低 W 素材默认不参与基准计算。</p>
+        <p class="note">VV 即播放量。点击率优先读取“点击率（视频）”，缺失时按商品点击次数 / VV 计算；转化率优先读取“CTOR（SKU 订单）”，缺失时按 SKU 订单数 / 商品点击次数计算。低 VV 素材默认不参与基准计算。</p>
       </div>
     </section>
 
@@ -712,10 +712,10 @@
       const trendEnd = result.trend.at(-1)?.date || result.maxDate;
       document.getElementById("calendarAnalysis").innerHTML = result.trend.length ? analysisHtml([
         `当前筛选后覆盖 ${trendStart} 到 ${trendEnd}，共有 ${result.trend.length} 天有视频数据，周期订单 ${money(totalOrders)}，GMV ${money(totalGmv)}。`,
-        peakDay ? `订单峰值出现在 ${peakDay.date}，当天订单 ${money(peakDay.all.orders)}；W 峰值出现在 ${peakWDay.date}，当天 W ${money0.format(peakWDay.all.w)}。` : "",
+        peakDay ? `订单峰值出现在 ${peakDay.date}，当天订单 ${money(peakDay.all.orders)}；VV/播放量峰值出现在 ${peakWDay.date}，当天 VV ${money0.format(peakWDay.all.w)}。` : "",
         totalOrders ? `稳定出单素材贡献 ${money(stableOrders)} 单，占周期订单 ${pct(stableOrders / totalOrders)}。` : "当前还没有形成可判断的订单贡献。",
         result.trend.length > 7 ? trendChangeText(avgMetric(recentDays, row => row.all.orders), avgMetric(previousDays, row => row.all.orders), "最近 7 天日均订单") : ""
-      ]) : analysisHtml(["导入视频明细表后，这里会按天判断订单、W、曝光和转化的高低峰。"]);
+      ]) : analysisHtml(["导入视频明细表后，这里会按天判断订单、VV/播放量、曝光和转化的高低峰。"]);
 
       const overall = result.overallBaseline;
       const stable = result.stableBaseline;
@@ -746,7 +746,7 @@
         `对比期订单较基期${orderDelta >= 0 ? "增加" : "减少"} ${money(Math.abs(orderDelta))}，日均订单变化 ${money(comparePeriod.avgOrders - basePeriod.avgOrders)}。`,
         `CTR ${rateDiffText(comparePeriod.ctr, basePeriod.ctr)}，转化率${rateDiffText(comparePeriod.conversion, basePeriod.conversion)}。`,
         `对比期 GMV 较基期${comparePeriod.totals.gmv >= basePeriod.totals.gmv ? "增加" : "减少"} ${money(Math.abs(comparePeriod.totals.gmv - basePeriod.totals.gmv))}。`
-      ]) : analysisHtml(["设置基期和对比期后，这里会自动比较订单、W、曝光、CTR、转化率和 GMV 的变化。"]);
+      ]) : analysisHtml(["设置基期和对比期后，这里会自动比较订单、VV/播放量、曝光、CTR、转化率和 GMV 的变化。"]);
 
       const topOrders = result.top.reduce((sum, row) => sum + num(row.orders), 0);
       const topStableCount = result.top.filter(row => result.stable.some(item => item.key === row.key)).length;
@@ -762,7 +762,7 @@
       const lastDay = result.trend[result.trend.length - 1];
       const peakCtrDay = result.trend.reduce((best, row) => !best || num(row.allCtr) > num(best.allCtr) ? row : best, null);
       document.getElementById("trendAnalysis").innerHTML = result.trend.length ? analysisHtml([
-        firstDay && lastDay ? `从 ${firstDay.date} 到 ${lastDay.date}，订单由 ${money(firstDay.all.orders)} 变为 ${money(lastDay.all.orders)}，W 由 ${money0.format(firstDay.all.w)} 变为 ${money0.format(lastDay.all.w)}。` : "",
+        firstDay && lastDay ? `从 ${firstDay.date} 到 ${lastDay.date}，订单由 ${money(firstDay.all.orders)} 变为 ${money(lastDay.all.orders)}，VV/播放量由 ${money0.format(firstDay.all.w)} 变为 ${money0.format(lastDay.all.w)}。` : "",
         result.trend.length > 1 ? trendChangeText(num(lastDay.all.orders), num(firstDay.all.orders), "首尾订单") : "",
         peakCtrDay ? `周期内 CTR 最高日期是 ${peakCtrDay.date}，CTR ${pct(peakCtrDay.allCtr)}，当天转化率 ${pct(peakCtrDay.allConversion)}。` : "",
         lastDay && totalOrders ? `最新一天稳定出单素材订单 ${money(lastDay.stable.orders)}，占当天订单 ${lastDay.all.orders ? pct(lastDay.stable.orders / lastDay.all.orders) : "0.00%" }。` : ""
@@ -772,7 +772,7 @@
       const stableGmv = result.stableDetails.reduce((sum, row) => sum + num(row.gmv), 0);
       document.getElementById("stableDetailAnalysis").innerHTML = result.stableDetails.length ? analysisHtml([
         `稳定出单明细共 ${result.stableDetails.length} 条记录，覆盖 ${result.stable.length} 条稳定素材，贡献 GMV ${money(stableGmv)}。`,
-        bestStableDay ? `单日表现最强的是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，订单 ${money(bestStableDay.orders)}，W ${money0.format(bestStableDay.w)}。` : "",
+        bestStableDay ? `单日表现最强的是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，订单 ${money(bestStableDay.orders)}，VV ${money0.format(bestStableDay.w)}。` : "",
         bestStableDay ? `该记录 CTR ${pct(bestStableDay.ctr)}、转化率 ${pct(bestStableDay.conversion)}，可作为稳定素材日常基准样本。` : "",
         `当前表格最多展示 500 条稳定素材明细；若明细很多，建议配合搜索框按达人、商品或素材关键词过滤。`
       ]) : analysisHtml(["还没有达到稳定出单阈值的素材；可以先降低稳定出单天数或稳定日均订单，找到候选素材池。"]);
@@ -804,7 +804,7 @@
           <div class="day-main"><b>${money(row.all.orders)}</b><span>订单</span></div>
           <div class="bar"><span style="width:${Math.max(4, orderShare)}%"></span></div>
           <div class="day-metrics">
-            <span>W ${money0.format(row.all.w)}</span><span>曝光 ${money0.format(row.all.exposure)}</span>
+            <span>VV ${money0.format(row.all.w)}</span><span>曝光 ${money0.format(row.all.exposure)}</span>
             <span>CTR ${pct(row.allCtr)}</span><span>转化 ${pct(row.allConversion)}</span>
             <span class="good">稳单 ${money(row.stable.orders)}</span><span>GMV ${money(row.all.gmv)}</span>
           </div>
@@ -822,14 +822,14 @@
         <label>基期结束<input id="baseEnd" type="date" value="${escapeHtml(state.baseEnd)}"></label>
         <label>对比期开始<input id="compareStart" type="date" value="${escapeHtml(state.compareStart)}"></label>
         <label>对比期结束<input id="compareEnd" type="date" value="${escapeHtml(state.compareEnd)}"></label>
-        <label>剔除低 W<input id="minW" type="number" step="1" value="${num(state.minW, 500)}"></label>
+        <label>剔除低 VV<input id="minW" type="number" step="1" value="${num(state.minW, 500)}"></label>
         <label>新素材天数<input id="recentDays" type="number" step="1" value="${num(state.recentDays, 7)}"></label>
         <label>稳定出单天数<input id="stableOrderDays" type="number" step="1" value="${num(state.stableMinOrderDays, 1)}"></label>
         <label>稳定日均订单<input id="stableDailyOrders" type="number" step="0.01" value="${num(state.stableMinDailyOrders, 1)}"></label>
         <label>Top条数<input id="topLimit" type="number" step="1" value="${num(state.topLimit, 30)}"></label>
         <span class="note">明细 ${state.detailRows.length} 行 / 总表 ${state.coreRows.length} 行</span>`;
       const kpis = [
-        ["有效素材数", money0.format(result.aggregates.length), `剔除 W < ${num(state.minW, 500)}`],
+        ["有效素材数", money0.format(result.aggregates.length), `剔除 VV < ${num(state.minW, 500)}`],
         ["稳定出单素材", money0.format(result.stable.length), `日均订单 >= ${num(state.stableMinDailyOrders, 1)}`],
         ["周期总订单", money(result.overallBaseline.totalOrders), "SKU 订单数"],
         ["稳定素材日均销量", money(result.stableBaseline.avgOrders), "按素材活跃天均值", result.stableBaseline.avgOrders > 0 ? "good" : "mid"],
@@ -840,24 +840,24 @@
       const comparePeriod = result.periodCompare.compare;
       const periodRows = [basePeriod, comparePeriod];
       const periodReady = (state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd);
-      document.getElementById("periodCompareTable").innerHTML = `<tr><th>周期</th><th>日期范围</th><th class="num">素材数</th><th class="num">有数据天数</th><th class="num">订单</th><th class="num">日均订单</th><th class="num">W</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
+      document.getElementById("periodCompareTable").innerHTML = `<tr><th>周期</th><th>日期范围</th><th class="num">素材数</th><th class="num">有数据天数</th><th class="num">订单</th><th class="num">日均订单</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
         (periodReady ? periodRows.map(periodCompareRow).join("") + deltaRow(basePeriod, comparePeriod) : `<tr><td colspan="12">设置基期和对比期后显示对比。</td></tr>`);
       renderCalendar(result);
       const baselines = [result.overallBaseline, result.stableBaseline, result.core].filter(Boolean);
-      document.getElementById("baselineTable").innerHTML = `<tr><th>口径</th><th class="num">素材数</th><th class="num">活跃素材天</th><th class="num">日均订单</th><th class="num">日均成交件</th><th class="num">日均W</th><th class="num">日均商品曝光</th><th class="num">日均点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">日均GMV</th><th class="num">总GMV</th></tr>` + baselines.map(baselineRow).join("");
-      document.getElementById("recentTable").innerHTML = `<tr><th>视频素材</th><th>发布时间</th><th class="num">发布天数</th><th class="num">日均订单</th><th class="num">vs稳定订单</th><th class="num">日均W</th><th class="num">日均曝光</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
+      document.getElementById("baselineTable").innerHTML = `<tr><th>口径</th><th class="num">素材数</th><th class="num">活跃素材天</th><th class="num">日均订单</th><th class="num">日均成交件</th><th class="num">日均VV</th><th class="num">日均商品曝光</th><th class="num">日均点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">日均GMV</th><th class="num">总GMV</th></tr>` + baselines.map(baselineRow).join("");
+      document.getElementById("recentTable").innerHTML = `<tr><th>视频素材</th><th>发布时间</th><th class="num">发布天数</th><th class="num">日均订单</th><th class="num">vs稳定订单</th><th class="num">日均VV</th><th class="num">日均曝光</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
         (result.recent.length ? result.recent.map(row => {
           const orderRatio = result.stableBaseline.avgOrders > 0 ? row.avgOrders / result.stableBaseline.avgOrders : 0;
           return `<tr><td>${videoLabel(row)}</td><td>${row.publishDate || ""}</td><td class="num">${row.ageDays == null ? "" : row.ageDays + 1}</td><td class="num">${money(row.avgOrders)}</td><td class="num ${orderRatio >= 1 ? "good" : "mid"}">${ratio(orderRatio)}x</td><td class="num">${money0.format(row.avgW)}</td><td class="num">${money0.format(row.avgExposure)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td></tr>`;
         }).join("") : `<tr><td colspan="10" class="calc-cell center">当前周期内没有识别到最近新发布素材。</td></tr>`);
-      document.getElementById("topTable").innerHTML = `<tr><th>视频素材</th><th>发布时间</th><th class="num">活跃天</th><th class="num">出单天</th><th class="num">总订单</th><th class="num">日均订单</th><th class="num">总成交件</th><th class="num">W</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th>状态</th></tr>` +
+      document.getElementById("topTable").innerHTML = `<tr><th>视频素材</th><th>发布时间</th><th class="num">活跃天</th><th class="num">出单天</th><th class="num">总订单</th><th class="num">日均订单</th><th class="num">总成交件</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th>状态</th></tr>` +
         (result.top.length ? result.top.map(row => {
           const stable = result.stable.some(item => item.key === row.key);
           return `<tr><td>${videoLabel(row)}</td><td>${row.publishDate || ""}</td><td class="num">${row.activeDays}</td><td class="num">${row.orderDays}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.avgOrders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td><td class="${stable ? "good" : "mid"}">${stable ? "稳定出单" : "观察"}</td></tr>`;
         }).join("") : `<tr><td colspan="14">导入视频明细表后显示。</td></tr>`);
-      document.getElementById("trendTable").innerHTML = `<tr><th>日期</th><th class="num">素材数</th><th class="num">订单</th><th class="num">W</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th class="num">稳定订单</th><th class="num">稳定W</th><th class="num">稳定曝光</th><th class="num">稳定CTR</th><th class="num">稳定转化率</th></tr>` +
+      document.getElementById("trendTable").innerHTML = `<tr><th>日期</th><th class="num">素材数</th><th class="num">订单</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th class="num">稳定订单</th><th class="num">稳定VV</th><th class="num">稳定曝光</th><th class="num">稳定CTR</th><th class="num">稳定转化率</th></tr>` +
         (result.trend.length ? result.trend.map(row => `<tr><td>${row.date}</td><td class="num">${row.videos}</td><td class="num">${money(row.all.orders)}</td><td class="num">${money0.format(row.all.w)}</td><td class="num">${money0.format(row.all.exposure)}</td><td class="num">${money0.format(row.all.clicks)}</td><td class="num">${pct(row.allCtr)}</td><td class="num">${pct(row.allConversion)}</td><td class="num">${money(row.all.gmv)}</td><td class="num">${money(row.stable.orders)}</td><td class="num">${money0.format(row.stable.w)}</td><td class="num">${money0.format(row.stable.exposure)}</td><td class="num">${pct(row.stableCtr)}</td><td class="num">${pct(row.stableConversion)}</td></tr>`).join("") : `<tr><td colspan="14">导入视频明细表后显示趋势。</td></tr>`);
-      document.getElementById("stableDetailTable").innerHTML = `<tr><th>日期</th><th>视频素材</th><th class="num">订单</th><th class="num">成交件</th><th class="num">W</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
+      document.getElementById("stableDetailTable").innerHTML = `<tr><th>日期</th><th>视频素材</th><th class="num">订单</th><th class="num">成交件</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
         (result.stableDetails.length ? result.stableDetails.slice(0, 500).map(row => `<tr><td>${row.date}</td><td>${videoLabel(row)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td></tr>`).join("") : `<tr><td colspan="10">暂无稳定出单素材明细。</td></tr>`);
       renderModuleAnalyses(result);
       bindControls();
@@ -924,7 +924,7 @@
     };
     document.getElementById("exportSnapshot").onclick = () => {
       const result = computeAnalysis();
-      const headers = ["类型", "日期/视频ID", "达人", "发布时间", "订单", "成交件", "W", "商品曝光", "点击", "CTR", "转化率", "GMV"];
+      const headers = ["类型", "日期/视频ID", "达人", "发布时间", "订单", "成交件", "VV/播放量", "商品曝光", "点击", "CTR", "转化率", "GMV"];
       const rows = [
         ...result.trend.map(row => ["每日趋势", row.date, "", "", row.all.orders, row.all.salesQty, row.all.w, row.all.exposure, row.all.clicks, row.allCtr, row.allConversion, row.all.gmv]),
         ...result.top.map(row => ["Top素材", row.videoId, row.creator, row.publishDate, row.orders, row.salesQty, row.w, row.exposure, row.clicks, row.ctr, row.conversion, row.gmv])
