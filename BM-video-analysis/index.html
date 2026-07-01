@@ -141,6 +141,58 @@
     #topTable, #stableDetailTable { min-width: 1480px; }
     #trendTable { min-width: 1320px; }
     #periodCompareTable { min-width: 1180px; }
+    .chart-tools {
+      display: flex;
+      align-items: end;
+      gap: 10px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .chart-tools label {
+      display: grid;
+      gap: 5px;
+      min-width: 160px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+    }
+    .chart-tools .wide { min-width: 340px; }
+    .chart-wrap {
+      min-height: 320px;
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      background: #fff;
+      overflow: hidden;
+      margin-bottom: 10px;
+    }
+    .chart-wrap svg { display: block; width: 100%; height: 320px; }
+    .chart-empty {
+      min-height: 320px;
+      display: grid;
+      place-items: center;
+      color: var(--muted);
+      font-weight: 800;
+    }
+    .formula-strip {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(180px, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .formula-item {
+      border: 1px solid #dbeafe;
+      border-radius: 14px;
+      background: #f8fbff;
+      padding: 10px 12px;
+      color: #334155;
+      line-height: 1.5;
+    }
+    .formula-item b {
+      display: block;
+      margin-bottom: 3px;
+      color: var(--ink);
+      font-weight: 900;
+    }
     th, td { border: 0; border-bottom: 1px solid var(--line); padding: 10px 11px; vertical-align: middle; overflow-wrap: anywhere; }
     th { position: sticky; top: 0; z-index: 2; background: #f8fafc; color: var(--ink); font-weight: 900; text-align: left; }
     td.num, th.num { text-align: right; }
@@ -189,7 +241,7 @@
     <div class="topbar">
       <div>
         <h1>BM-TikTok Shop TH 视频素材分析工具</h1>
-        <p class="subtitle">导入视频总表与日维度视频明细，查看素材基准、新视频、稳定出单素材和每日变化。</p>
+        <p class="subtitle">导入日维度视频明细，查看素材基准、新视频、稳定出单素材和每日变化。</p>
       </div>
       <div class="actions">
         <button class="primary" id="exportSnapshot">导出分析CSV</button>
@@ -202,11 +254,9 @@
       <h2>数据导入与分析口径</h2>
       <div class="panel-body">
         <div class="actions" style="margin-bottom:10px">
-          <label class="file-label" for="coreFile">导入总表</label>
-          <input id="coreFile" type="file" accept=".xlsx,.xls,.csv">
           <label class="file-label" for="detailFile">导入视频明细表</label>
           <input id="detailFile" type="file" accept=".xlsx,.xls,.csv">
-          <span class="note" id="importStatus">总表对应 Video Performance Core Stats；视频明细表对应 Video Performance List。</span>
+          <span class="note" id="importStatus">视频明细表对应 Video Performance List。可以连续导入多天，系统会按日期累计；重复导入同日同素材会覆盖。</span>
         </div>
         <div class="filters" id="controls"></div>
         <p class="note">VV 即播放量。点击率优先读取“点击率（视频）”，缺失时按商品点击次数 / VV 计算；转化率优先读取“CTOR（SKU 订单）”，缺失时按 SKU 订单数 / 商品点击次数计算。低 VV 素材默认不参与基准计算。</p>
@@ -227,6 +277,11 @@
       <h2>每日视频表现日历</h2>
       <div class="panel-body">
         <div class="calendar-grid" id="calendar"></div>
+        <div class="formula-strip">
+          <div class="formula-item"><b>稳单</b>当天属于“稳定出单素材”的 SKU 订单数合计；稳定素材由下方“稳定出单天数”和“稳定日均订单”阈值共同判断。</div>
+          <div class="formula-item"><b>CTR</b>优先读取表格“点击率（视频）”；缺失时按 商品点击次数 / VV 播放量 计算。</div>
+          <div class="formula-item"><b>转化</b>优先读取表格“CTOR（SKU 订单）”；缺失时按 SKU 订单数 / 商品点击次数 计算。</div>
+        </div>
         <div class="analysis-box" id="calendarAnalysis"></div>
       </div>
     </section>
@@ -260,6 +315,11 @@
       <section class="panel">
         <h2>周期趋势变化</h2>
         <div class="panel-body">
+          <div class="chart-tools">
+            <label>数值柱形<select id="trendValueMetric"></select></label>
+            <label>率指标折线<select id="trendRateMetric"></select></label>
+          </div>
+          <div class="chart-wrap" id="trendChart"></div>
           <div class="scroll"><table id="trendTable"></table></div>
           <div class="analysis-box" id="trendAnalysis"></div>
         </div>
@@ -267,6 +327,12 @@
       <section class="panel">
         <h2>稳定出单视频变化详情</h2>
         <div class="panel-body">
+          <div class="chart-tools">
+            <label class="wide">稳定素材筛选<select id="stableVideoFilter"></select></label>
+            <label>数值柱形<select id="stableValueMetric"></select></label>
+            <label>率指标折线<select id="stableRateMetric"></select></label>
+          </div>
+          <div class="chart-wrap" id="stableChart"></div>
           <div class="scroll"><table id="stableDetailTable"></table></div>
           <div class="analysis-box" id="stableDetailAnalysis"></div>
         </div>
@@ -281,9 +347,7 @@
     const stateKeyBase = "bmVideoMaterialAnalysisStateV1";
     const defaultState = {
       detailRows: [],
-      coreRows: [],
       detailFileName: "",
-      coreFileName: "",
       minW: 500,
       recentDays: 7,
       stableMinOrderDays: 1,
@@ -295,9 +359,27 @@
       baseEnd: "",
       compareStart: "",
       compareEnd: "",
-      search: ""
+      search: "",
+      trendValueMetric: "orders",
+      trendRateMetric: "ctr",
+      stableVideoKey: "",
+      stableValueMetric: "orders",
+      stableRateMetric: "conversion"
     };
     let state = loadState();
+    const valueMetrics = [
+      { key: "orders", label: "订单", picker: row => row.all.orders, format: money },
+      { key: "salesQty", label: "成交件", picker: row => row.all.salesQty, format: money },
+      { key: "w", label: "VV/播放量", picker: row => row.all.w, format: value => money0.format(num(value)) },
+      { key: "exposure", label: "商品曝光", picker: row => row.all.exposure, format: value => money0.format(num(value)) },
+      { key: "clicks", label: "点击", picker: row => row.all.clicks, format: value => money0.format(num(value)) },
+      { key: "gmv", label: "GMV", picker: row => row.all.gmv, format: money }
+    ];
+    const rateMetrics = [
+      { key: "none", label: "不显示率指标", picker: () => 0, format: () => "" },
+      { key: "ctr", label: "CTR", picker: row => row.allCtr, format: pct },
+      { key: "conversion", label: "转化率", picker: row => row.allConversion, format: pct }
+    ];
 
     function projectId() {
       return new URLSearchParams(location.search).get("project") || localStorage.getItem("bm_current_project_v1") || "";
@@ -320,9 +402,8 @@
     }
     function normalizeState(next) {
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
-      if (!Array.isArray(next.coreRows)) next.coreRows = [];
       ["minW", "recentDays", "stableMinOrderDays", "stableMinDailyOrders", "topLimit"].forEach(key => next[key] = num(next[key], defaultState[key]));
-      ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search"].forEach(key => next[key] = String(next[key] || ""));
+      ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search", "trendValueMetric", "trendRateMetric", "stableVideoKey", "stableValueMetric", "stableRateMetric"].forEach(key => next[key] = String(next[key] || defaultState[key] || ""));
       return next;
     }
     function num(v, fallback = 0) {
@@ -421,8 +502,8 @@
     function detailRowKey(row) {
       return [row.date, row.videoId, row.product || row.title || row.creator || ""].join("__");
     }
-    function coreRowKey(row) {
-      return row.date || "";
+    function rowVideoKey(row) {
+      return row.videoId || `${row.creator}_${row.title}`;
     }
     function workbookRowsFromBuffer(buffer) {
       const workbook = XLSX.read(buffer, { type: "array", cellDates: true, raw: false });
@@ -483,35 +564,6 @@
       if (!parsed.length) throw new Error("视频明细表没有可导入的数据。");
       return { rows: parsed, sheetName };
     }
-    function parseVideoCoreWorkbook(buffer) {
-      const { rows, sheetName } = workbookRowsFromBuffer(buffer);
-      const headerIndex = findHeaderIndex(rows, ["时间", "VV"]);
-      if (headerIndex < 0) throw new Error("没有找到总表表头，请导入 Video Performance Core Stats。");
-      const headers = rows[headerIndex];
-      const parsed = rows.slice(headerIndex + 1).map(row => {
-        const record = recordFromRow(headers, row);
-        const date = dateKey(recordValue(record, ["时间", "日期"]));
-        if (!date) return null;
-        const w = parseMetric(recordValue(record, ["VV", "W", "播放量"]));
-        const exposure = parseMetric(recordValue(record, ["商品曝光数", "商品曝光次数", "商品曝光"]));
-        const clicks = parseMetric(recordValue(record, ["商品点击数", "商品点击次数", "商品点击"]));
-        const orders = parseMetric(recordValue(record, ["视频 SKU 订单数", "归因 SKU 订单数", "SKU 订单数"]));
-        const gmv = parseMetric(recordValue(record, ["视频 GMV", "视频归因 GMV", "GMV"]));
-        return {
-          date,
-          w,
-          gmv,
-          gpm: parseMetric(recordValue(record, ["GPM"])),
-          orders,
-          exposure,
-          clicks,
-          ctr: parseRateMetric(recordValue(record, ["点击率（视频）", "点击率", "CTR"]), w > 0 ? clicks / w : 0),
-          conversion: parseRateMetric(recordValue(record, ["CTOR（SKU 订单）", "CTOR", "转化率"]), clicks > 0 ? orders / clicks : 0)
-        };
-      }).filter(Boolean);
-      if (!parsed.length) throw new Error("总表没有可导入的数据。");
-      return { rows: parsed, sheetName };
-    }
     function sumVideoRows(rows) {
       return rows.reduce((acc, row) => {
         acc.w += num(row.w); acc.exposure += num(row.exposure); acc.clicks += num(row.clicks);
@@ -540,31 +592,31 @@
         totalGmv: totals.gmv
       };
     }
-    function coreBaseline(rows) {
-      const days = rows.length || 1;
-      const totals = rows.reduce((acc, row) => {
-        acc.w += num(row.w); acc.exposure += num(row.exposure); acc.clicks += num(row.clicks); acc.orders += num(row.orders); acc.gmv += num(row.gmv);
-        return acc;
-      }, { w: 0, exposure: 0, clicks: 0, orders: 0, gmv: 0 });
-      return {
-        label: "总表整体指标", videoCount: "", activeVideoDays: days,
-        avgOrders: totals.orders / days,
-        avgSalesQty: "",
-        avgW: totals.w / days,
-        avgExposure: totals.exposure / days,
-        avgClicks: totals.clicks / days,
-        ctr: totals.w > 0 ? totals.clicks / totals.w : 0,
-        conversion: totals.clicks > 0 ? totals.orders / totals.clicks : 0,
-        avgGmv: totals.gmv / days,
-        totalOrders: totals.orders,
-        totalGmv: totals.gmv
-      };
+    function dailyTrendFromRows(rows, stableIds = null) {
+      const dates = [...new Set(rows.map(row => row.date).filter(Boolean))].sort();
+      return dates.map(date => {
+        const allRows = rows.filter(row => row.date === date);
+        const stableRows = stableIds ? allRows.filter(row => stableIds.has(rowVideoKey(row))) : [];
+        const all = sumVideoRows(allRows);
+        const stableSum = sumVideoRows(stableRows);
+        return {
+          date,
+          videos: new Set(allRows.map(row => rowVideoKey(row))).size,
+          stableVideos: stableRows.length ? new Set(stableRows.map(row => rowVideoKey(row))).size : 0,
+          all,
+          stable: stableSum,
+          allCtr: all.w > 0 ? all.clicks / all.w : 0,
+          allConversion: all.clicks > 0 ? all.orders / all.clicks : 0,
+          stableCtr: stableSum.w > 0 ? stableSum.clicks / stableSum.w : 0,
+          stableConversion: stableSum.clicks > 0 ? stableSum.orders / stableSum.clicks : 0
+        };
+      });
     }
     function periodSummary(label, rows, start, end) {
       const periodRows = rows.filter(row => inDateRange(row.date, start, end));
       const totals = sumVideoRows(periodRows);
       const dates = [...new Set(periodRows.map(row => row.date).filter(Boolean))].sort();
-      const videoCount = new Set(periodRows.map(row => row.videoId || `${row.creator}_${row.title}`)).size;
+      const videoCount = new Set(periodRows.map(rowVideoKey)).size;
       const days = dates.length || 1;
       return {
         label,
@@ -581,7 +633,8 @@
         avgClicks: totals.clicks / days,
         ctr: totals.w > 0 ? totals.clicks / totals.w : 0,
         conversion: totals.clicks > 0 ? totals.orders / totals.clicks : 0,
-        avgGmv: totals.gmv / days
+        avgGmv: totals.gmv / days,
+        trend: dailyTrendFromRows(periodRows)
       };
     }
     function periodRangeText(summary) {
@@ -594,14 +647,12 @@
       const filteredAll = keyword ? qualified.filter(row => [row.videoId, row.title, row.creator, row.product].some(value => String(value || "").toLowerCase().includes(keyword))) : qualified;
       const filtered = filteredAll.filter(row => inDateRange(row.date, state.analysisStart, state.analysisEnd));
       const detailDates = [...new Set(filtered.map(row => row.date).filter(Boolean))].sort();
-      const activeCoreRows = state.coreRows.filter(row => inDateRange(row.date, state.analysisStart, state.analysisEnd));
-      const coreDates = [...new Set(activeCoreRows.map(row => row.date).filter(Boolean))].sort();
-      const maxDate = detailDates.at(-1) || coreDates.at(-1) || "";
-      const minDate = detailDates[0] || coreDates[0] || "";
+      const maxDate = detailDates.at(-1) || "";
+      const minDate = detailDates[0] || "";
       const recentCutoff = maxDate ? addDays(maxDate, -Math.max(1, num(state.recentDays, 7)) + 1) : "";
       const groups = new Map();
       filtered.forEach(row => {
-        const key = row.videoId || `${row.creator}_${row.title}`;
+        const key = rowVideoKey(row);
         if (!groups.has(key)) groups.set(key, { key, videoId: row.videoId, creator: row.creator, title: row.title, product: row.product, publishDate: row.publishDate, dates: new Set(), orderDates: new Set(), w: 0, exposure: 0, clicks: 0, orders: 0, salesQty: 0, gmv: 0 });
         const agg = groups.get(key);
         if (row.publishDate && (!agg.publishDate || row.publishDate < agg.publishDate)) agg.publishDate = row.publishDate;
@@ -630,34 +681,18 @@
       const stableIds = new Set(stable.map(row => row.key));
       const overallBaseline = baselineFromAggregates("全部有效素材", aggregates);
       const stableBaseline = baselineFromAggregates("稳定出单素材", stable);
-      const core = activeCoreRows.length ? coreBaseline(activeCoreRows) : null;
+      const core = null;
       const top = [...aggregates].sort((a, b) => (b.orders - a.orders) || (b.gmv - a.gmv)).slice(0, Math.max(1, num(state.topLimit, 30)));
       const recent = aggregates.filter(row => row.publishDate && recentCutoff && row.publishDate >= recentCutoff).sort((a, b) => (b.orders - a.orders) || String(b.publishDate).localeCompare(a.publishDate));
       const periodCompare = {
         base: periodSummary("基期", filteredAll, state.baseStart, state.baseEnd),
         compare: periodSummary("对比期", filteredAll, state.compareStart, state.compareEnd)
       };
-      const trend = detailDates.map(date => {
-        const allRows = filtered.filter(row => row.date === date);
-        const stableRows = allRows.filter(row => stableIds.has(row.videoId || `${row.creator}_${row.title}`));
-        const all = sumVideoRows(allRows);
-        const stableSum = sumVideoRows(stableRows);
-        return {
-          date,
-          videos: new Set(allRows.map(row => row.videoId)).size,
-          stableVideos: new Set(stableRows.map(row => row.videoId)).size,
-          all,
-          stable: stableSum,
-          allCtr: all.w > 0 ? all.clicks / all.w : 0,
-          allConversion: all.clicks > 0 ? all.orders / all.clicks : 0,
-          stableCtr: stableSum.w > 0 ? stableSum.clicks / stableSum.w : 0,
-          stableConversion: stableSum.clicks > 0 ? stableSum.orders / stableSum.clicks : 0
-        };
-      });
+      const trend = dailyTrendFromRows(filtered, stableIds);
       const stableDetails = filtered
-        .filter(row => stableIds.has(row.videoId || `${row.creator}_${row.title}`))
+        .filter(row => stableIds.has(rowVideoKey(row)))
         .sort((a, b) => String(a.date).localeCompare(b.date) || num(b.orders) - num(a.orders));
-      return { qualified, filteredAll, aggregates, stable, overallBaseline, stableBaseline, core, top, recent, trend, stableDetails, periodCompare, maxDate, minDate, recentCutoff };
+      return { qualified, filteredAll, aggregates, stable, stableIds, overallBaseline, stableBaseline, core, top, recent, trend, stableDetails, periodCompare, maxDate, minDate, recentCutoff };
     }
     function videoLabel(row) {
       const title = String(row.title || "").slice(0, 60);
@@ -724,8 +759,8 @@
         `有效素材 ${overall.videoCount} 条，其中稳定出单素材 ${result.stable.length} 条，占比 ${pct(stableRatio)}。`,
         result.stable.length ? `稳定素材日均订单 ${money(stable.avgOrders)}，是全部有效素材日均订单的 ${ratio(overall.avgOrders ? stable.avgOrders / overall.avgOrders : 0)} 倍。` : "当前稳定出单素材为 0，建议放宽稳定出单天数或日均订单阈值复核。",
         result.stable.length ? `稳定素材 CTR 较全部有效素材${rateDiffText(stable.ctr, overall.ctr)}，转化率${rateDiffText(stable.conversion, overall.conversion)}。` : "",
-        result.core ? `总表整体订单 ${money(result.core.totalOrders)}，明细有效素材订单 ${money(overall.totalOrders)}；两者差异可用于检查明细导入是否覆盖完整。` : "未导入总表时，基准只来自视频明细表。"
-      ]) : analysisHtml(["导入数据后会对比全部有效素材、稳定出单素材和总表整体指标。"]);
+        "当前基准只使用视频明细表，低 VV 素材会按剔除阈值排除。"
+      ]) : analysisHtml(["导入数据后会对比全部有效素材和稳定出单素材。"]);
 
       const topRecent = result.recent[0];
       const recentAvgOrders = avgMetric(result.recent, row => row.avgOrders);
@@ -768,10 +803,12 @@
         lastDay && totalOrders ? `最新一天稳定出单素材订单 ${money(lastDay.stable.orders)}，占当天订单 ${lastDay.all.orders ? pct(lastDay.stable.orders / lastDay.all.orders) : "0.00%" }。` : ""
       ]) : analysisHtml(["导入视频明细表后会自动比较首尾变化、最近变化和高转化日期。"]);
 
-      const bestStableDay = result.stableDetails.reduce((best, row) => !best || num(row.orders) > num(best.orders) ? row : best, null);
-      const stableGmv = result.stableDetails.reduce((sum, row) => sum + num(row.gmv), 0);
-      document.getElementById("stableDetailAnalysis").innerHTML = result.stableDetails.length ? analysisHtml([
-        `稳定出单明细共 ${result.stableDetails.length} 条记录，覆盖 ${result.stable.length} 条稳定素材，贡献 GMV ${money(stableGmv)}。`,
+      const visibleStableDetails = result.visibleStableDetails || result.stableDetails;
+      const selectedStablePrefix = result.visibleStableLabel ? `当前筛选「${result.visibleStableLabel}」，` : "";
+      const bestStableDay = visibleStableDetails.reduce((best, row) => !best || num(row.orders) > num(best.orders) ? row : best, null);
+      const stableGmv = visibleStableDetails.reduce((sum, row) => sum + num(row.gmv), 0);
+      document.getElementById("stableDetailAnalysis").innerHTML = visibleStableDetails.length ? analysisHtml([
+        `${selectedStablePrefix}稳定出单明细共 ${visibleStableDetails.length} 条记录，覆盖 ${result.visibleStableLabel ? 1 : result.stable.length} 条稳定素材，贡献 GMV ${money(stableGmv)}。`,
         bestStableDay ? `单日表现最强的是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，订单 ${money(bestStableDay.orders)}，VV ${money0.format(bestStableDay.w)}。` : "",
         bestStableDay ? `该记录 CTR ${pct(bestStableDay.ctr)}、转化率 ${pct(bestStableDay.conversion)}，可作为稳定素材日常基准样本。` : "",
         `当前表格最多展示 500 条稳定素材明细；若明细很多，建议配合搜索框按达人、商品或素材关键词过滤。`
@@ -812,8 +849,128 @@
       }
       document.getElementById("calendar").innerHTML = cells.join("");
     }
+    function metricOptions(metrics, selected) {
+      return metrics.map(metric => `<option value="${metric.key}" ${metric.key === selected ? "selected" : ""}>${metric.label}</option>`).join("");
+    }
+    function metricByKey(metrics, key) {
+      return metrics.find(metric => metric.key === key) || metrics[0];
+    }
+    function chartSeriesData(baseRows, compareRows, valueMetric, rateMetric) {
+      const count = Math.max(baseRows.length, compareRows.length);
+      return Array.from({ length: count }, (_, index) => {
+        const base = baseRows[index] || null;
+        const compare = compareRows[index] || null;
+        return {
+          index,
+          label: [base?.date?.slice(5), compare?.date?.slice(5)].filter(Boolean).join(" / ") || `D${index + 1}`,
+          baseValue: base ? num(valueMetric.picker(base)) : 0,
+          compareValue: compare ? num(valueMetric.picker(compare)) : 0,
+          baseRate: base ? num(rateMetric.picker(base)) : 0,
+          compareRate: compare ? num(rateMetric.picker(compare)) : 0
+        };
+      });
+    }
+    function svgPath(points) {
+      return points.map((point, index) => `${index ? "L" : "M"}${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+    }
+    function renderMetricChart(containerId, baseRows, compareRows, options) {
+      const container = document.getElementById(containerId);
+      const valueMetric = metricByKey(valueMetrics, options.valueMetricKey);
+      const rateMetric = metricByKey(rateMetrics, options.rateMetricKey);
+      const hasCompare = compareRows.length > 0;
+      const hasRate = rateMetric.key !== "none";
+      if (!baseRows.length && !compareRows.length) {
+        container.innerHTML = `<div class="chart-empty">导入视频明细表后显示趋势图。</div>`;
+        return;
+      }
+      const width = 980;
+      const height = 320;
+      const pad = { left: 62, right: hasRate ? 64 : 26, top: 34, bottom: 48 };
+      const plotW = width - pad.left - pad.right;
+      const plotH = height - pad.top - pad.bottom;
+      const data = chartSeriesData(baseRows, compareRows, valueMetric, rateMetric);
+      const maxValue = Math.max(1, ...data.flatMap(row => [row.baseValue, row.compareValue]));
+      const maxRate = Math.max(0.01, ...data.flatMap(row => [row.baseRate, row.compareRate]));
+      const groupW = plotW / Math.max(data.length, 1);
+      const barW = Math.min(18, groupW / (hasCompare ? 4 : 2.4));
+      const yValue = value => pad.top + plotH - (num(value) / maxValue) * plotH;
+      const yRate = value => pad.top + plotH - (num(value) / maxRate) * plotH;
+      const xAt = index => pad.left + groupW * index + groupW / 2;
+      const baseRatePoints = data.map(row => ({ x: xAt(row.index), y: yRate(row.baseRate) }));
+      const compareRatePoints = data.map(row => ({ x: xAt(row.index), y: yRate(row.compareRate) }));
+      const labelStep = Math.max(1, Math.ceil(data.length / 10));
+      const grid = [0, .25, .5, .75, 1].map(t => {
+        const y = pad.top + plotH * t;
+        const value = maxValue * (1 - t);
+        return `<line x1="${pad.left}" y1="${y}" x2="${width - pad.right}" y2="${y}" stroke="#e2e8f0"/><text x="${pad.left - 8}" y="${y + 4}" text-anchor="end" fill="#64748b" font-size="11">${money0.format(value)}</text>`;
+      }).join("");
+      const rightAxis = hasRate ? [0, .5, 1].map(t => {
+        const y = pad.top + plotH * (1 - t);
+        return `<text x="${width - pad.right + 8}" y="${y + 4}" fill="#64748b" font-size="11">${(maxRate * t * 100).toFixed(1)}%</text>`;
+      }).join("") : "";
+      const bars = data.map(row => {
+        const x = xAt(row.index);
+        const baseH = pad.top + plotH - yValue(row.baseValue);
+        const compareH = pad.top + plotH - yValue(row.compareValue);
+        const baseX = hasCompare ? x - barW - 2 : x - barW / 2;
+        const compareX = x + 2;
+        return `
+          <rect x="${baseX}" y="${yValue(row.baseValue)}" width="${barW}" height="${Math.max(0, baseH)}" rx="3" fill="#5b45e8"><title>${options.baseLabel} ${row.label} ${valueMetric.label}: ${valueMetric.format(row.baseValue)}</title></rect>
+          ${hasCompare ? `<rect x="${compareX}" y="${yValue(row.compareValue)}" width="${barW}" height="${Math.max(0, compareH)}" rx="3" fill="#c4b5fd"><title>${options.compareLabel} ${row.label} ${valueMetric.label}: ${valueMetric.format(row.compareValue)}</title></rect>` : ""}`;
+      }).join("");
+      const xLabels = data.map(row => row.index % labelStep === 0 ? `<text x="${xAt(row.index)}" y="${height - 18}" text-anchor="middle" fill="#64748b" font-size="11">${row.label}</text>` : "").join("");
+      const rateLines = hasRate ? `
+        <path d="${svgPath(baseRatePoints)}" fill="none" stroke="#0f766e" stroke-width="3"><title>${options.baseLabel} ${rateMetric.label}</title></path>
+        ${hasCompare ? `<path d="${svgPath(compareRatePoints)}" fill="none" stroke="#99f6e4" stroke-width="3" stroke-dasharray="6 5"><title>${options.compareLabel} ${rateMetric.label}</title></path>` : ""}
+        ${baseRatePoints.map((point, index) => `<circle cx="${point.x}" cy="${point.y}" r="3" fill="#0f766e"><title>${options.baseLabel} ${data[index].label} ${rateMetric.label}: ${rateMetric.format(data[index].baseRate)}</title></circle>`).join("")}
+        ${hasCompare ? compareRatePoints.map((point, index) => `<circle cx="${point.x}" cy="${point.y}" r="3" fill="#5eead4"><title>${options.compareLabel} ${data[index].label} ${rateMetric.label}: ${rateMetric.format(data[index].compareRate)}</title></circle>`).join("") : ""}` : "";
+      const legend = `
+        <g font-size="12" font-weight="800">
+          <rect x="${pad.left}" y="12" width="12" height="12" rx="3" fill="#5b45e8"/><text x="${pad.left + 18}" y="22" fill="#334155">${options.baseLabel} ${valueMetric.label}</text>
+          ${hasCompare ? `<rect x="${pad.left + 160}" y="12" width="12" height="12" rx="3" fill="#c4b5fd"/><text x="${pad.left + 178}" y="22" fill="#334155">${options.compareLabel} ${valueMetric.label}</text>` : ""}
+          ${hasRate ? `<line x1="${pad.left + 340}" y1="18" x2="${pad.left + 358}" y2="18" stroke="#0f766e" stroke-width="3"/><text x="${pad.left + 364}" y="22" fill="#334155">${options.baseLabel} ${rateMetric.label}</text>` : ""}
+          ${hasRate && hasCompare ? `<line x1="${pad.left + 500}" y1="18" x2="${pad.left + 518}" y2="18" stroke="#99f6e4" stroke-width="3" stroke-dasharray="6 5"/><text x="${pad.left + 524}" y="22" fill="#334155">${options.compareLabel} ${rateMetric.label}</text>` : ""}
+        </g>`;
+      container.innerHTML = `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="${options.title}">
+        <rect x="0" y="0" width="${width}" height="${height}" fill="#fff"/>
+        ${legend}
+        ${grid}
+        <line x1="${pad.left}" y1="${pad.top + plotH}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#cbd5e1"/>
+        <line x1="${pad.left}" y1="${pad.top}" x2="${pad.left}" y2="${pad.top + plotH}" stroke="#cbd5e1"/>
+        ${hasRate ? `<line x1="${width - pad.right}" y1="${pad.top}" x2="${width - pad.right}" y2="${pad.top + plotH}" stroke="#cbd5e1"/>${rightAxis}` : ""}
+        ${bars}
+        ${rateLines}
+        ${xLabels}
+      </svg>`;
+    }
+    function renderCharts(result) {
+      const periodReady = (state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd);
+      renderMetricChart("trendChart", periodReady ? result.periodCompare.base.trend : result.trend, periodReady ? result.periodCompare.compare.trend : [], {
+        valueMetricKey: state.trendValueMetric,
+        rateMetricKey: state.trendRateMetric,
+        baseLabel: periodReady ? "基期" : "当前周期",
+        compareLabel: "对比期",
+        title: "周期趋势变化"
+      });
+      const selected = String(state.stableVideoKey || "");
+      const stableSource = result.filteredAll.filter(row => result.stableIds.has(rowVideoKey(row)) && (!selected || rowVideoKey(row) === selected));
+      const currentStableRows = stableSource.filter(row => inDateRange(row.date, state.analysisStart, state.analysisEnd));
+      const baseStableRows = stableSource.filter(row => inDateRange(row.date, state.baseStart, state.baseEnd));
+      const compareStableRows = stableSource.filter(row => inDateRange(row.date, state.compareStart, state.compareEnd));
+      renderMetricChart("stableChart", periodReady ? dailyTrendFromRows(baseStableRows) : dailyTrendFromRows(currentStableRows), periodReady ? dailyTrendFromRows(compareStableRows) : [], {
+        valueMetricKey: state.stableValueMetric,
+        rateMetricKey: state.stableRateMetric,
+        baseLabel: periodReady ? "基期" : "当前周期",
+        compareLabel: "对比期",
+        title: "稳定出单视频变化"
+      });
+    }
     function render() {
       const result = computeAnalysis();
+      if (state.stableVideoKey && !result.stable.some(row => row.key === state.stableVideoKey)) {
+        state.stableVideoKey = "";
+        saveState();
+      }
       document.getElementById("controls").innerHTML = `
         <label class="wide">搜索素材/达人/商品<input id="search" type="search" value="${escapeHtml(state.search)}" placeholder="输入关键词筛选"></label>
         <label>分析开始<input id="analysisStart" type="date" value="${escapeHtml(state.analysisStart)}"></label>
@@ -827,7 +984,7 @@
         <label>稳定出单天数<input id="stableOrderDays" type="number" step="1" value="${num(state.stableMinOrderDays, 1)}"></label>
         <label>稳定日均订单<input id="stableDailyOrders" type="number" step="0.01" value="${num(state.stableMinDailyOrders, 1)}"></label>
         <label>Top条数<input id="topLimit" type="number" step="1" value="${num(state.topLimit, 30)}"></label>
-        <span class="note">明细 ${state.detailRows.length} 行 / 总表 ${state.coreRows.length} 行</span>`;
+        <span class="note">明细累计 ${state.detailRows.length} 行</span>`;
       const kpis = [
         ["有效素材数", money0.format(result.aggregates.length), `剔除 VV < ${num(state.minW, 500)}`],
         ["稳定出单素材", money0.format(result.stable.length), `日均订单 >= ${num(state.stableMinDailyOrders, 1)}`],
@@ -843,7 +1000,7 @@
       document.getElementById("periodCompareTable").innerHTML = `<tr><th>周期</th><th>日期范围</th><th class="num">素材数</th><th class="num">有数据天数</th><th class="num">订单</th><th class="num">日均订单</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
         (periodReady ? periodRows.map(periodCompareRow).join("") + deltaRow(basePeriod, comparePeriod) : `<tr><td colspan="12">设置基期和对比期后显示对比。</td></tr>`);
       renderCalendar(result);
-      const baselines = [result.overallBaseline, result.stableBaseline, result.core].filter(Boolean);
+      const baselines = [result.overallBaseline, result.stableBaseline].filter(Boolean);
       document.getElementById("baselineTable").innerHTML = `<tr><th>口径</th><th class="num">素材数</th><th class="num">活跃素材天</th><th class="num">日均订单</th><th class="num">日均成交件</th><th class="num">日均VV</th><th class="num">日均商品曝光</th><th class="num">日均点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">日均GMV</th><th class="num">总GMV</th></tr>` + baselines.map(baselineRow).join("");
       document.getElementById("recentTable").innerHTML = `<tr><th>视频素材</th><th>发布时间</th><th class="num">发布天数</th><th class="num">日均订单</th><th class="num">vs稳定订单</th><th class="num">日均VV</th><th class="num">日均曝光</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
         (result.recent.length ? result.recent.map(row => {
@@ -857,8 +1014,21 @@
         }).join("") : `<tr><td colspan="14">导入视频明细表后显示。</td></tr>`);
       document.getElementById("trendTable").innerHTML = `<tr><th>日期</th><th class="num">素材数</th><th class="num">订单</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th class="num">稳定订单</th><th class="num">稳定VV</th><th class="num">稳定曝光</th><th class="num">稳定CTR</th><th class="num">稳定转化率</th></tr>` +
         (result.trend.length ? result.trend.map(row => `<tr><td>${row.date}</td><td class="num">${row.videos}</td><td class="num">${money(row.all.orders)}</td><td class="num">${money0.format(row.all.w)}</td><td class="num">${money0.format(row.all.exposure)}</td><td class="num">${money0.format(row.all.clicks)}</td><td class="num">${pct(row.allCtr)}</td><td class="num">${pct(row.allConversion)}</td><td class="num">${money(row.all.gmv)}</td><td class="num">${money(row.stable.orders)}</td><td class="num">${money0.format(row.stable.w)}</td><td class="num">${money0.format(row.stable.exposure)}</td><td class="num">${pct(row.stableCtr)}</td><td class="num">${pct(row.stableConversion)}</td></tr>`).join("") : `<tr><td colspan="14">导入视频明细表后显示趋势。</td></tr>`);
+      const visibleStableDetails = state.stableVideoKey ? result.stableDetails.filter(row => rowVideoKey(row) === state.stableVideoKey) : result.stableDetails;
+      result.visibleStableDetails = visibleStableDetails;
+      result.visibleStableLabel = state.stableVideoKey ? shortVideoName(result.stable.find(row => row.key === state.stableVideoKey) || {}) : "";
       document.getElementById("stableDetailTable").innerHTML = `<tr><th>日期</th><th>视频素材</th><th class="num">订单</th><th class="num">成交件</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th></tr>` +
-        (result.stableDetails.length ? result.stableDetails.slice(0, 500).map(row => `<tr><td>${row.date}</td><td>${videoLabel(row)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td></tr>`).join("") : `<tr><td colspan="10">暂无稳定出单素材明细。</td></tr>`);
+        (visibleStableDetails.length ? visibleStableDetails.slice(0, 500).map(row => `<tr><td>${row.date}</td><td>${videoLabel(row)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td></tr>`).join("") : `<tr><td colspan="10">暂无稳定出单素材明细。</td></tr>`);
+      document.getElementById("trendValueMetric").innerHTML = metricOptions(valueMetrics, state.trendValueMetric);
+      document.getElementById("trendRateMetric").innerHTML = metricOptions(rateMetrics, state.trendRateMetric);
+      document.getElementById("stableValueMetric").innerHTML = metricOptions(valueMetrics, state.stableValueMetric);
+      document.getElementById("stableRateMetric").innerHTML = metricOptions(rateMetrics, state.stableRateMetric);
+      const stableOptions = [`<option value="">全部稳定出单素材</option>`].concat(result.stable.map(row => {
+        const key = row.key;
+        return `<option value="${escapeHtml(key)}" ${key === state.stableVideoKey ? "selected" : ""}>${escapeHtml(row.videoId || "")} / ${escapeHtml(shortVideoName(row))}</option>`;
+      }));
+      document.getElementById("stableVideoFilter").innerHTML = stableOptions.join("");
+      renderCharts(result);
       renderModuleAnalyses(result);
       bindControls();
     }
@@ -867,7 +1037,9 @@
         ["search", "search", "text"], ["analysisStart", "analysisStart", "text"], ["analysisEnd", "analysisEnd", "text"],
         ["baseStart", "baseStart", "text"], ["baseEnd", "baseEnd", "text"], ["compareStart", "compareStart", "text"], ["compareEnd", "compareEnd", "text"],
         ["minW", "minW"], ["recentDays", "recentDays"],
-        ["stableOrderDays", "stableMinOrderDays"], ["stableDailyOrders", "stableMinDailyOrders"], ["topLimit", "topLimit"]
+        ["stableOrderDays", "stableMinOrderDays"], ["stableDailyOrders", "stableMinDailyOrders"], ["topLimit", "topLimit"],
+        ["trendValueMetric", "trendValueMetric", "text"], ["trendRateMetric", "trendRateMetric", "text"],
+        ["stableVideoFilter", "stableVideoKey", "text"], ["stableValueMetric", "stableValueMetric", "text"], ["stableRateMetric", "stableRateMetric", "text"]
       ].forEach(([id, key, type]) => {
         const el = document.getElementById(id);
         const handler = () => {
@@ -893,24 +1065,6 @@
         document.getElementById("importStatus").textContent = `视频明细表导入成功：本次 ${result.rows.length} 行，累计 ${state.detailRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.detailRows.length)} 行；工作表：${result.sheetName}）。`;
       } catch (error) {
         document.getElementById("importStatus").textContent = `视频明细表导入失败：${error.message || error}`;
-      } finally {
-        event.target.value = "";
-      }
-    };
-    document.getElementById("coreFile").onchange = async event => {
-      const file = event.target.files?.[0];
-      if (!file) return;
-      document.getElementById("importStatus").textContent = "正在读取总表...";
-      try {
-        const result = parseVideoCoreWorkbook(await file.arrayBuffer());
-        const before = state.coreRows.length;
-        state.coreRows = mergeRows(state.coreRows, result.rows, coreRowKey);
-        state.coreFileName = file.name;
-        saveState();
-        render();
-        document.getElementById("importStatus").textContent = `总表导入成功：本次 ${result.rows.length} 行，累计 ${state.coreRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.coreRows.length)} 行；工作表：${result.sheetName}）。`;
-      } catch (error) {
-        document.getElementById("importStatus").textContent = `总表导入失败：${error.message || error}`;
       } finally {
         event.target.value = "";
       }
