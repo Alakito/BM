@@ -240,6 +240,8 @@
         <p class="subtitle">导入广告端创意素材表现表，查看素材消耗、收入、ROI、点击与转化趋势。</p>
       </div>
       <div class="actions">
+        <button class="primary" id="saveData">保存数据</button>
+        <button id="clearCache">清除缓存</button>
         <button class="primary" id="exportSnapshot">导出分析CSV</button>
         <button class="danger" id="clearData">清空广告数据</button>
       </div>
@@ -401,6 +403,7 @@
       { key: "play6Rate", label: "6秒播放率", picker: row => row.allPlay6Rate, format: pct }
     ];
     let state = loadState();
+    let hasUnsavedChanges = false;
 
     function projectId() {
       return new URLSearchParams(location.search).get("project") || localStorage.getItem("bm_current_project_v1") || "";
@@ -436,6 +439,31 @@
         }
         throw error;
       }
+    }
+    function clearSavedState() {
+      localStorage.removeItem(scopedKey());
+    }
+    function markUnsaved(statusId, message) {
+      hasUnsavedChanges = true;
+      updateSaveButton();
+      if (statusId && message) {
+        const status = document.getElementById(statusId);
+        if (status) status.textContent = message;
+      }
+    }
+    function markSaved(statusId, message) {
+      hasUnsavedChanges = false;
+      updateSaveButton();
+      if (statusId && message) {
+        const status = document.getElementById(statusId);
+        if (status) status.textContent = message;
+      }
+    }
+    function updateSaveButton() {
+      const button = document.getElementById("saveData");
+      if (!button) return;
+      button.textContent = hasUnsavedChanges ? "保存数据*" : "保存数据";
+      button.title = hasUnsavedChanges ? "当前页面有未保存的数据或设置" : "当前页面数据已保存";
     }
     function normalizeState(next) {
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
@@ -788,10 +816,10 @@
       if (index >= 0) rows[index] = next; else rows.push(next);
       state.metadataRows = mergeMetadataRows(rows, []);
       state.metaEditKey = "";
-      saveState();
+      markUnsaved();
       render();
       const status = document.getElementById("metadataStatus");
-      if (status) status.textContent = `已保存手动补充：产品/方向/类型/批次。`;
+      if (status) status.textContent = `已更新手动补充：产品/方向/类型/批次。当前未保存，请点击「保存数据」。`;
     }
     function publishInfoFields(row) {
       const meta = publishInfoFor(row);
@@ -1446,7 +1474,7 @@
       const result = computeAnalysis();
       if (state.stableVideoKey && !result.stable.some(row => row.key === state.stableVideoKey)) {
         state.stableVideoKey = "";
-        saveState();
+        markUnsaved();
       }
       document.getElementById("controls").innerHTML = `
         <label class="wide">搜索素材/达人/商品<input id="search" type="search" value="${escapeHtml(state.search)}" placeholder="输入关键词筛选"></label>
@@ -1517,6 +1545,7 @@
       renderCharts(result);
       renderModuleAnalyses(result);
       bindControls();
+      updateSaveButton();
     }
     function bindControls() {
       [
@@ -1530,7 +1559,7 @@
         const el = document.getElementById(id);
         const handler = () => {
           state[key] = type === "text" ? el.value : num(el.value);
-          saveState();
+          markUnsaved();
           render();
         };
         el.onchange = handler;
@@ -1540,7 +1569,7 @@
         document.querySelectorAll(`.metric-choice[data-group="${group}"]`).forEach(input => {
           input.onchange = () => {
             state[group] = [...document.querySelectorAll(`.metric-choice[data-group="${group}"]:checked`)].map(item => item.value);
-            saveState();
+            markUnsaved();
             render();
           };
         });
@@ -1592,9 +1621,9 @@
           state.analysisStart = state.analysisStart || dates[0] || "";
           state.analysisEnd = state.analysisEnd || dates.at(-1) || "";
         }
-        saveState();
+        markUnsaved();
         render();
-        document.getElementById("importStatus").textContent = `广告素材表导入成功：本次 ${result.rows.length} 行，累计 ${state.detailRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.detailRows.length)} 行；工作表：${result.sheetName}；数据日期：${result.reportDate || "未识别"}）。`;
+        document.getElementById("importStatus").textContent = `广告素材表导入成功：本次 ${result.rows.length} 行，累计 ${state.detailRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.detailRows.length)} 行；工作表：${result.sheetName}；数据日期：${result.reportDate || "未识别"}）。当前未保存，请点击「保存数据」。`;
       } catch (error) {
         document.getElementById("importStatus").textContent = `广告素材表导入失败：${error.message || error}`;
       } finally {
@@ -1610,19 +1639,41 @@
         const before = state.metadataRows.length;
         state.metadataRows = mergeMetadataRows(state.metadataRows, result.rows);
         state.metadataFileName = file.name;
-        saveState();
+        markUnsaved();
         render();
-        document.getElementById("metadataStatus").textContent = `发布信息表导入成功：本次 ${result.rows.length} 行，累计 ${state.metadataRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.metadataRows.length)} 行；工作表：${result.sheetName}）。`;
+        document.getElementById("metadataStatus").textContent = `发布信息表导入成功：本次 ${result.rows.length} 行，累计 ${state.metadataRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.metadataRows.length)} 行；工作表：${result.sheetName}）。当前未保存，请点击「保存数据」。`;
       } catch (error) {
         document.getElementById("metadataStatus").textContent = `发布信息表导入失败：${error.message || error}`;
       } finally {
         event.target.value = "";
       }
     };
+    document.getElementById("saveData").onclick = () => {
+      try {
+        saveState();
+        markSaved("importStatus", `已保存当前广告素材分析数据：明细 ${state.detailRows.length} 行，发布信息 ${state.metadataRows.length} 行。`);
+      } catch (error) {
+        document.getElementById("importStatus").textContent = `保存失败：${error.message || error}`;
+      }
+    };
+    document.getElementById("clearCache").onclick = () => {
+      if (!confirm("确认清除当前项目的广告素材缓存？当前页面已导入的数据会保留，但刷新页面后未保存的数据会消失。")) return;
+      try {
+        clearSavedState();
+        hasUnsavedChanges = state.detailRows.length > 0 || state.metadataRows.length > 0;
+        updateSaveButton();
+        document.getElementById("importStatus").textContent = hasUnsavedChanges
+          ? "已清除当前项目广告素材缓存。当前页面数据仍保留，如需下次打开继续使用，请点击「保存数据」。"
+          : "已清除当前项目广告素材缓存。";
+      } catch (error) {
+        document.getElementById("importStatus").textContent = `清除缓存失败：${error.message || error}`;
+      }
+    };
     document.getElementById("clearData").onclick = () => {
       if (!confirm("确认清空当前项目的广告素材分析数据？")) return;
       state = structuredClone(defaultState);
-      saveState();
+      clearSavedState();
+      hasUnsavedChanges = false;
       render();
       document.getElementById("importStatus").textContent = "已清空广告数据。";
     };
@@ -1641,6 +1692,7 @@
       URL.revokeObjectURL(a.href);
     };
     render();
+    updateSaveButton();
   </script>
 </body>
 </html>
