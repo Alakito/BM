@@ -973,8 +973,8 @@
     }
     function analysisHtml(lines) {
       const useful = lines.filter(Boolean);
-      if (!useful.length) return `<strong>简要分析</strong><span class="note">导入数据后自动生成结论。</span>`;
-      return `<strong>简要分析</strong><ul>${useful.map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+      if (!useful.length) return `<strong>分析建议</strong><span class="note">导入数据后自动生成结论。</span>`;
+      return `<strong>分析建议</strong><ul>${useful.map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
     }
     function rateDiffText(current, base) {
       const diff = (num(current) - num(base)) * 100;
@@ -995,79 +995,94 @@
       const totalOrders = num(result.overallBaseline.totalOrders);
       const totalGmv = num(result.overallBaseline.totalGmv);
       const stableOrders = result.trend.reduce((sum, row) => sum + num(row.stable.orders), 0);
+      const stableOrderShare = totalOrders ? stableOrders / totalOrders : 0;
       const peakDay = result.trend.reduce((best, row) => !best || num(row.all.orders) > num(best.all.orders) ? row : best, null);
       const peakWDay = result.trend.reduce((best, row) => !best || num(row.all.w) > num(best.all.w) ? row : best, null);
       const recentDays = result.trend.slice(-Math.min(7, result.trend.length));
       const previousDays = result.trend.slice(-Math.min(14, result.trend.length), -Math.min(7, result.trend.length));
+      const recentAvgOrders = avgMetric(recentDays, row => row.all.orders);
+      const previousAvgOrders = avgMetric(previousDays, row => row.all.orders);
+      const recentOrderUp = previousDays.length ? recentAvgOrders >= previousAvgOrders : null;
+      const recentOrderCompareText = previousDays.length ? `最近 7 天日均订单${recentOrderUp ? "高于" : "低于"}前一段` : "最近 7 天暂无完整前段可比";
       const trendStart = result.trend[0]?.date || result.minDate;
       const trendEnd = result.trend.at(-1)?.date || result.maxDate;
+      const stableRole = stableOrderShare >= 0.6 ? "稳定素材已经是销量主引擎" : stableOrderShare >= 0.3 ? "稳定素材有支撑，但仍需要新素材接力" : "稳定素材池偏弱，销量更依赖短期爆发";
       document.getElementById("calendarAnalysis").innerHTML = result.trend.length ? analysisHtml([
-        `当前筛选后覆盖 ${trendStart} 到 ${trendEnd}，共有 ${result.trend.length} 天有视频数据，周期订单 ${money(totalOrders)}，GMV ${money(totalGmv)}。`,
-        peakDay ? `订单峰值出现在 ${peakDay.date}，当天订单 ${money(peakDay.all.orders)}；VV/播放量峰值出现在 ${peakWDay.date}，当天 VV ${money0.format(peakWDay.all.w)}。` : "",
-        totalOrders ? `稳定出单素材贡献 ${money(stableOrders)} 单，占周期订单 ${pct(stableOrders / totalOrders)}。` : "当前还没有形成可判断的订单贡献。",
-        result.trend.length > 7 ? trendChangeText(avgMetric(recentDays, row => row.all.orders), avgMetric(previousDays, row => row.all.orders), "最近 7 天日均订单") : ""
+        `判断：${stableRole}；周期订单 ${money(totalOrders)}、GMV ${money(totalGmv)}，稳定素材贡献 ${pct(stableOrderShare)}。`,
+        peakDay ? `依据：订单峰值在 ${peakDay.date}（${money(peakDay.all.orders)} 单），VV/播放量峰值在 ${peakWDay.date}（${money0.format(peakWDay.all.w)}）；${result.trend.length > 7 ? recentOrderCompareText : "当前数据天数较少，先看峰值日和出单日" }。` : "",
+        result.trend.length > 7 ? `下一步：${recentOrderUp ? "复盘最近 7 天增长日的达人、产品方向和脚本，优先复制到同类素材。" : "排查最近 7 天下滑日，是 VV/曝光少了，还是 CTR、转化率掉了，再决定补量或改素材。"}` : "下一步：继续累计至少 7 天数据，再判断素材是否真的稳定。"
       ]) : analysisHtml(["导入视频明细表后，这里会按天判断订单、VV/播放量、曝光和转化的高低峰。"]);
 
       const overall = result.overallBaseline;
       const stable = result.stableBaseline;
       const stableRatio = overall.videoCount ? result.stable.length / overall.videoCount : 0;
+      const stableOrderMultiple = overall.avgOrders ? stable.avgOrders / overall.avgOrders : 0;
+      const stableDiagnosis = !result.stable.length ? "还没有形成稳定出单素材池" : stableOrderMultiple >= 2 ? "稳定素材显著强于大盘，值得沉淀复拍模板" : stableOrderMultiple >= 1 ? "稳定素材略强于大盘，但优势还不够厚" : "稳定素材订单效率反而弱于大盘，需要复核阈值或素材质量";
+      const stableNext = !result.stable.length ? "下一步：先放宽稳定出单天数或日均订单阈值，找出候选素材池。" : stable.conversion < overall.conversion ? "下一步：稳定素材点击后转化偏弱，优先检查商品承接、价格和优惠表达。" : stable.ctr < overall.ctr ? "下一步：稳定素材点击吸引力偏弱，优先优化封面、前 3 秒和利益点。" : "下一步：把稳定素材的达人类型、产品方向和脚本结构整理成复拍清单。";
       document.getElementById("baselineAnalysis").innerHTML = result.aggregates.length ? analysisHtml([
-        `有效素材 ${overall.videoCount} 条，其中稳定出单素材 ${result.stable.length} 条，占比 ${pct(stableRatio)}。`,
-        result.stable.length ? `稳定素材日均订单 ${money(stable.avgOrders)}，是全部有效素材日均订单的 ${ratio(overall.avgOrders ? stable.avgOrders / overall.avgOrders : 0)} 倍。` : "当前稳定出单素材为 0，建议放宽稳定出单天数或日均订单阈值复核。",
-        result.stable.length ? `稳定素材 CTR 较全部有效素材${rateDiffText(stable.ctr, overall.ctr)}，转化率${rateDiffText(stable.conversion, overall.conversion)}。` : "",
-        "当前基准只使用视频明细表，低 VV 素材会按剔除阈值排除。"
+        `判断：${stableDiagnosis}；有效素材 ${overall.videoCount} 条，稳定素材 ${result.stable.length} 条，占比 ${pct(stableRatio)}。`,
+        result.stable.length ? `依据：稳定素材日均订单是大盘的 ${ratio(stableOrderMultiple)} 倍，CTR 较大盘${rateDiffText(stable.ctr, overall.ctr)}，转化率${rateDiffText(stable.conversion, overall.conversion)}。` : "依据：当前稳定素材为 0，说明现有素材还没达到持续出单门槛。",
+        stableNext
       ]) : analysisHtml(["导入数据后会对比全部有效素材和稳定出单素材。"]);
 
       const topRecent = result.recent[0];
-      const recentAvgOrders = avgMetric(result.recent, row => row.avgOrders);
+      const recentNewAvgOrders = avgMetric(result.recent, row => row.avgOrders);
       const recentAboveStable = result.recent.filter(row => row.avgOrders >= stable.avgOrders && stable.avgOrders > 0).length;
+      const recentHitRate = result.recent.length ? recentAboveStable / result.recent.length : 0;
+      const recentJudgement = stable.avgOrders ? recentHitRate >= 0.3 ? "新素材已经有可放大的苗头" : "新素材整体还没跑过稳定基准" : "缺少稳定基准，先按新素材内部排名判断";
+      const recentNext = topRecent && stable.avgOrders && topRecent.avgOrders >= stable.avgOrders ? "下一步：给领先新素材更多曝光，并同步做同达人/同方向复拍。" : topRecent && topRecent.ctr < stable.ctr ? "下一步：新素材优先优化点击侧，重点看封面、标题钩子和前 3 秒。" : "下一步：保留领先素材继续观察 3-7 天，未达标素材及时换角度测试。";
       document.getElementById("recentAnalysis").innerHTML = result.recent.length ? analysisHtml([
-        `最近 ${num(state.recentDays, 7)} 天新发布素材 ${result.recent.length} 条，平均日订单 ${money(recentAvgOrders)}。`,
-        stable.avgOrders ? `其中 ${recentAboveStable} 条的新素材日均订单达到或超过稳定出单基准。` : "当前没有稳定出单基准，暂时只能看新素材自身排序。",
-        topRecent ? `新素材里当前领先的是「${shortVideoName(topRecent)}」，日均订单 ${money(topRecent.avgOrders)}，CTR ${pct(topRecent.ctr)}，转化率 ${pct(topRecent.conversion)}。` : "",
-        topRecent && stable.avgOrders ? `该素材日均订单约为稳定素材基准的 ${ratio(topRecent.avgOrders / stable.avgOrders)} 倍。` : ""
+        `判断：${recentJudgement}；最近 ${num(state.recentDays, 7)} 天新素材 ${result.recent.length} 条，平均日订单 ${money(recentNewAvgOrders)}。`,
+        topRecent ? `依据：当前领先素材「${shortVideoName(topRecent)}」日均订单 ${money(topRecent.avgOrders)}，CTR ${pct(topRecent.ctr)}，转化率 ${pct(topRecent.conversion)}；达标新素材 ${recentAboveStable} 条。` : "",
+        recentNext
       ]) : analysisHtml([`当前筛选周期内没有识别到最近 ${num(state.recentDays, 7)} 天发布的新素材；可检查发布时间列或扩大新素材天数。`]);
 
       const basePeriod = result.periodCompare.base;
       const comparePeriod = result.periodCompare.compare;
       const periodReady = (state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd);
       const orderDelta = comparePeriod.totals.orders - basePeriod.totals.orders;
+      const gmvDelta = comparePeriod.totals.gmv - basePeriod.totals.gmv;
+      const periodJudgement = orderDelta > 0 && comparePeriod.conversion >= basePeriod.conversion ? "对比期增长质量较健康" : orderDelta > 0 ? "对比期有增长，但转化承接需要复核" : "对比期订单走弱，需要先找流量或转化下滑点";
+      const periodNext = orderDelta > 0 && comparePeriod.ctr >= basePeriod.ctr && comparePeriod.conversion >= basePeriod.conversion ? "下一步：保留对比期更优的素材组合，扩大同类达人和产品方向。" : comparePeriod.ctr < basePeriod.ctr ? "下一步：先优化点击侧素材钩子，避免只靠曝光放大。" : "下一步：检查详情页、价格、优惠和评论承接，优先修转化。";
       document.getElementById("periodCompareAnalysis").innerHTML = periodReady ? analysisHtml([
-        `基期 ${periodRangeText(basePeriod)}，对比期 ${periodRangeText(comparePeriod)}。`,
-        `对比期订单较基期${orderDelta >= 0 ? "增加" : "减少"} ${money(Math.abs(orderDelta))}，日均订单变化 ${money(comparePeriod.avgOrders - basePeriod.avgOrders)}。`,
-        `CTR ${rateDiffText(comparePeriod.ctr, basePeriod.ctr)}，转化率${rateDiffText(comparePeriod.conversion, basePeriod.conversion)}。`,
-        `对比期 GMV 较基期${comparePeriod.totals.gmv >= basePeriod.totals.gmv ? "增加" : "减少"} ${money(Math.abs(comparePeriod.totals.gmv - basePeriod.totals.gmv))}。`
+        `判断：${periodJudgement}；对比期订单较基期${orderDelta >= 0 ? "增加" : "减少"} ${money(Math.abs(orderDelta))}，GMV ${gmvDelta >= 0 ? "增加" : "减少"} ${money(Math.abs(gmvDelta))}。`,
+        `依据：CTR ${rateDiffText(comparePeriod.ctr, basePeriod.ctr)}，转化率${rateDiffText(comparePeriod.conversion, basePeriod.conversion)}，日均订单变化 ${money(comparePeriod.avgOrders - basePeriod.avgOrders)}。`,
+        periodNext
       ]) : analysisHtml(["设置基期和对比期后，这里会自动比较订单、VV/播放量、曝光、CTR、转化率和 GMV 的变化。"]);
 
       const topOrders = result.top.reduce((sum, row) => sum + num(row.orders), 0);
       const topStableCount = result.top.filter(row => result.stable.some(item => item.key === row.key)).length;
       const bestTop = result.top[0];
+      const topShare = totalOrders ? topOrders / totalOrders : 0;
+      const topJudgement = topShare >= 0.7 ? "销量高度集中在头部素材" : topShare >= 0.4 ? "头部素材贡献明显，但仍有腰部补充" : "头部爆款不够突出，需要继续找强素材";
+      const topNext = topStableCount ? "下一步：优先复盘 Top 稳定素材的达人类型、产品方向、内容方向，再批量复拍。" : "下一步：把 Top 素材继续观察持续性，避免只复制一次性爆发素材。";
       document.getElementById("topAnalysis").innerHTML = result.top.length ? analysisHtml([
-        `Top ${result.top.length} 素材合计订单 ${money(topOrders)}，占周期订单 ${totalOrders ? pct(topOrders / totalOrders) : "0.00%"}。`,
-        bestTop ? `销量第一素材是「${shortVideoName(bestTop)}」，总订单 ${money(bestTop.orders)}，日均订单 ${money(bestTop.avgOrders)}，GMV ${money(bestTop.gmv)}。` : "",
-        `Top 素材中有 ${topStableCount} 条属于稳定出单素材，说明头部销量${topStableCount ? "有稳定素材承接" : "更多来自短期爆发，需要继续观察持续性"}。`,
-        bestTop ? `该头部素材 CTR ${pct(bestTop.ctr)}、转化率 ${pct(bestTop.conversion)}，可优先拆解内容脚本和商品承接。` : ""
+        `判断：${topJudgement}；Top ${result.top.length} 素材贡献 ${money(topOrders)} 单，占周期订单 ${pct(topShare)}。`,
+        bestTop ? `依据：销量第一「${shortVideoName(bestTop)}」总订单 ${money(bestTop.orders)}、日均订单 ${money(bestTop.avgOrders)}，CTR ${pct(bestTop.ctr)}、转化率 ${pct(bestTop.conversion)}。` : "",
+        topNext
       ]) : analysisHtml(["导入视频明细表后，这里会判断周期内贡献订单最多的素材。"]);
 
       const firstDay = result.trend[0];
       const lastDay = result.trend[result.trend.length - 1];
       const peakCtrDay = result.trend.reduce((best, row) => !best || num(row.allCtr) > num(best.allCtr) ? row : best, null);
+      const lastStableShare = lastDay && lastDay.all.orders ? lastDay.stable.orders / lastDay.all.orders : 0;
+      const trendJudgement = firstDay && lastDay && lastDay.all.orders > firstDay.all.orders ? "周期尾部订单高于起点，素材池处在放量状态" : "周期尾部没有明显放量，需要关注素材衰减";
+      const trendNext = peakCtrDay && lastDay && lastDay.allCtr < peakCtrDay.allCtr ? "下一步：复盘 CTR 峰值日的素材钩子，并对最近低 CTR 日期做封面和开头优化。" : "下一步：把高转化日期对应的素材和商品承接整理出来，作为后续投放基准。";
       document.getElementById("trendAnalysis").innerHTML = result.trend.length ? analysisHtml([
-        firstDay && lastDay ? `从 ${firstDay.date} 到 ${lastDay.date}，订单由 ${money(firstDay.all.orders)} 变为 ${money(lastDay.all.orders)}，VV/播放量由 ${money0.format(firstDay.all.w)} 变为 ${money0.format(lastDay.all.w)}。` : "",
-        result.trend.length > 1 ? trendChangeText(num(lastDay.all.orders), num(firstDay.all.orders), "首尾订单") : "",
-        peakCtrDay ? `周期内 CTR 最高日期是 ${peakCtrDay.date}，CTR ${pct(peakCtrDay.allCtr)}，当天转化率 ${pct(peakCtrDay.allConversion)}。` : "",
-        lastDay && totalOrders ? `最新一天稳定出单素材订单 ${money(lastDay.stable.orders)}，占当天订单 ${lastDay.all.orders ? pct(lastDay.stable.orders / lastDay.all.orders) : "0.00%" }。` : ""
+        firstDay && lastDay ? `判断：${trendJudgement}；${firstDay.date} 到 ${lastDay.date}，订单由 ${money(firstDay.all.orders)} 变为 ${money(lastDay.all.orders)}，VV/播放量由 ${money0.format(firstDay.all.w)} 变为 ${money0.format(lastDay.all.w)}。` : "",
+        peakCtrDay ? `依据：CTR 峰值在 ${peakCtrDay.date}（${pct(peakCtrDay.allCtr)}），当天转化率 ${pct(peakCtrDay.allConversion)}；最新一天稳定素材贡献 ${pct(lastStableShare)}。` : "",
+        trendNext
       ]) : analysisHtml(["导入视频明细表后会自动比较首尾变化、最近变化和高转化日期。"]);
 
       const visibleStableDetails = result.visibleStableDetails || result.stableDetails;
       const selectedStablePrefix = result.visibleStableLabel ? `当前筛选「${result.visibleStableLabel}」，` : "";
       const bestStableDay = visibleStableDetails.reduce((best, row) => !best || num(row.orders) > num(best.orders) ? row : best, null);
       const stableGmv = visibleStableDetails.reduce((sum, row) => sum + num(row.gmv), 0);
+      const stableDetailAvg = visibleStableDetails.length ? visibleStableDetails.reduce((sum, row) => sum + num(row.orders), 0) / visibleStableDetails.length : 0;
       document.getElementById("stableDetailAnalysis").innerHTML = visibleStableDetails.length ? analysisHtml([
-        `${selectedStablePrefix}稳定出单明细共 ${visibleStableDetails.length} 条记录，覆盖 ${result.visibleStableLabel ? 1 : result.stable.length} 条稳定素材，贡献 GMV ${money(stableGmv)}。`,
-        bestStableDay ? `单日表现最强的是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，订单 ${money(bestStableDay.orders)}，VV ${money0.format(bestStableDay.w)}。` : "",
-        bestStableDay ? `该记录 CTR ${pct(bestStableDay.ctr)}、转化率 ${pct(bestStableDay.conversion)}，可作为稳定素材日常基准样本。` : "",
-        `当前表格最多展示 500 条稳定素材明细；若明细很多，建议配合搜索框按达人、商品或素材关键词过滤。`
+        `判断：${selectedStablePrefix}稳定素材已经有可复用样本；明细 ${visibleStableDetails.length} 条，贡献 GMV ${money(stableGmv)}，单日平均订单 ${money(stableDetailAvg)}。`,
+        bestStableDay ? `依据：最强单日是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，订单 ${money(bestStableDay.orders)}，CTR ${pct(bestStableDay.ctr)}，转化率 ${pct(bestStableDay.conversion)}。` : "",
+        "下一步：用稳定明细筛选达人、产品、方向，找出可长期复投的素材组合；若样本太多，先按关键词或单个稳定素材过滤。"
       ]) : analysisHtml(["还没有达到稳定出单阈值的素材；可以先降低稳定出单天数或稳定日均订单，找到候选素材池。"]);
     }
     function renderCalendar(result) {

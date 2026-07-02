@@ -965,8 +965,8 @@
     }
     function analysisHtml(lines) {
       const useful = lines.filter(Boolean);
-      if (!useful.length) return `<strong>简要分析</strong><span class="note">导入数据后自动生成结论。</span>`;
-      return `<strong>简要分析</strong><ul>${useful.map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
+      if (!useful.length) return `<strong>分析建议</strong><span class="note">导入数据后自动生成结论。</span>`;
+      return `<strong>分析建议</strong><ul>${useful.map(line => `<li>${escapeHtml(line)}</li>`).join("")}</ul>`;
     }
     function rateDiffText(current, base) {
       const diff = (num(current) - num(base)) * 100;
@@ -987,78 +987,95 @@
       const totalSpend = num(result.overallBaseline.totalSpend);
       const totalRevenue = num(result.overallBaseline.totalRevenue);
       const stableRevenue = result.trend.reduce((sum, row) => sum + num(row.stable.revenue), 0);
+      const stableRevenueShare = totalRevenue ? stableRevenue / totalRevenue : 0;
       const peakRevenueDay = result.trend.reduce((best, row) => !best || num(row.all.revenue) > num(best.all.revenue) ? row : best, null);
       const peakSpendDay = result.trend.reduce((best, row) => !best || num(row.all.spend) > num(best.all.spend) ? row : best, null);
       const recentDays = result.trend.slice(-Math.min(7, result.trend.length));
       const previousDays = result.trend.slice(-Math.min(14, result.trend.length), -Math.min(7, result.trend.length));
+      const recentAvgRevenue = avgMetric(recentDays, row => row.all.revenue);
+      const previousAvgRevenue = avgMetric(previousDays, row => row.all.revenue);
+      const recentRevenueUp = previousDays.length ? recentAvgRevenue >= previousAvgRevenue : null;
       const trendStart = result.trend[0]?.date || result.minDate;
       const trendEnd = result.trend.at(-1)?.date || result.maxDate;
+      const stableRole = stableRevenueShare >= 0.6 ? "收入主要由稳定成交素材承接" : stableRevenueShare >= 0.3 ? "稳定素材有收入支撑，但仍需要新素材补充" : "稳定素材收入占比偏低，投放更依赖短期爆发素材";
       document.getElementById("calendarAnalysis").innerHTML = result.trend.length ? analysisHtml([
-        `当前筛选后覆盖 ${trendStart} 到 ${trendEnd}，共 ${result.trend.length} 天有广告素材数据，周期消耗 ${money(totalSpend)}，收入 ${money(totalRevenue)}，整体 ROI ${ratio(result.overallBaseline.roi)}。`,
-        peakRevenueDay ? `收入峰值出现在 ${peakRevenueDay.date}，当天收入 ${money(peakRevenueDay.all.revenue)}；消耗峰值出现在 ${peakSpendDay.date}，当天消耗 ${money(peakSpendDay.all.spend)}。` : "",
-        totalRevenue ? `稳定成交素材贡献收入 ${money(stableRevenue)}，占周期收入 ${pct(stableRevenue / totalRevenue)}。` : "当前还没有形成可判断的收入贡献。",
-        result.trend.length > 7 ? trendChangeText(avgMetric(recentDays, row => row.all.revenue), avgMetric(previousDays, row => row.all.revenue), "最近 7 天日均收入") : ""
+        `判断：${stableRole}；周期消耗 ${money(totalSpend)}、收入 ${money(totalRevenue)}，整体 ROI ${ratio(result.overallBaseline.roi)}。`,
+        peakRevenueDay ? `依据：收入峰值在 ${peakRevenueDay.date}（${money(peakRevenueDay.all.revenue)}），消耗峰值在 ${peakSpendDay.date}（${money(peakSpendDay.all.spend)}）；稳定素材收入占比 ${pct(stableRevenueShare)}。` : "",
+        result.trend.length > 7 ? `下一步：${recentRevenueUp ? "最近 7 天收入走强，优先保留 ROI 达标素材并逐步加预算。" : "最近 7 天收入走弱，先排查消耗是否过快、ROI 是否下滑，再决定控预算或换素材。"}` : "下一步：继续累计至少 7 天数据，再判断素材是否具备稳定放量价值。"
       ]) : analysisHtml(["导入广告素材表后，这里会按天判断消耗、收入、ROI 和转化的高低峰。"]);
 
       const overall = result.overallBaseline;
       const stable = result.stableBaseline;
       const stableRatio = overall.videoCount ? result.stable.length / overall.videoCount : 0;
+      const stableRevenueMultiple = overall.avgRevenue ? stable.avgRevenue / overall.avgRevenue : 0;
+      const stableDiagnosis = !result.stable.length ? "还没有形成稳定成交广告素材池" : stable.roi > overall.roi ? "稳定素材不仅出收入，ROI 也优于大盘" : stableRevenueMultiple >= 1 ? "稳定素材收入能力不错，但 ROI 优势不明显" : "稳定素材表现弱于大盘，需要复核稳定阈值或投放质量";
+      const stableNext = !result.stable.length ? "下一步：先放宽稳定成交天数或日均订单阈值，找到候选素材。" : stable.roi < overall.roi ? "下一步：稳定素材要先控成本，重点看高消耗低收入素材是否拖低 ROI。" : stable.ctr < overall.ctr ? "下一步：稳定素材 CTR 偏弱，优先优化素材钩子和首屏信息。" : "下一步：把稳定素材的产品、方向、达人类型沉淀成可复制投放模板。";
       document.getElementById("baselineAnalysis").innerHTML = result.aggregates.length ? analysisHtml([
-        `有效广告素材 ${overall.videoCount} 条，其中稳定成交素材 ${result.stable.length} 条，占比 ${pct(stableRatio)}。`,
-        result.stable.length ? `稳定素材日均收入 ${money(stable.avgRevenue)}，整体 ROI ${ratio(stable.roi)}；全部有效素材 ROI 为 ${ratio(overall.roi)}。` : "当前稳定成交素材为 0，建议先放宽稳定成交天数或稳定日均订单阈值复核。",
-        result.stable.length ? `稳定素材 CTR 较全部有效素材${rateDiffText(stable.ctr, overall.ctr)}，广告转化率${rateDiffText(stable.conversion, overall.conversion)}。` : "",
-        "当前基准只使用广告素材明细表，低消耗素材会按剔除阈值排除。"
+        `判断：${stableDiagnosis}；有效素材 ${overall.videoCount} 条，稳定素材 ${result.stable.length} 条，占比 ${pct(stableRatio)}。`,
+        result.stable.length ? `依据：稳定素材日均收入是大盘的 ${ratio(stableRevenueMultiple)} 倍，ROI ${ratio(stable.roi)} vs 大盘 ${ratio(overall.roi)}，CTR 较大盘${rateDiffText(stable.ctr, overall.ctr)}。` : "依据：当前稳定成交素材为 0，说明没有素材同时满足持续成交和门槛要求。",
+        stableNext
       ]) : analysisHtml(["导入数据后会对比全部有效广告素材和稳定成交广告素材。"]);
 
       const topRecent = result.recent[0];
       const recentRevenue = result.recent.reduce((sum, row) => sum + num(row.revenue), 0);
       const recentAboveStable = result.recent.filter(row => row.roi >= stable.roi && stable.roi > 0).length;
+      const recentHitRate = result.recent.length ? recentAboveStable / result.recent.length : 0;
+      const recentJudgement = stable.roi ? recentHitRate >= 0.3 ? "新广告素材里已经出现可加预算对象" : "新广告素材整体还没跑过稳定 ROI 基准" : "缺少稳定 ROI 基准，先按新素材自身收入和 ROI 排序";
+      const recentNext = topRecent && stable.roi && topRecent.roi >= stable.roi ? "下一步：给领先新素材小步加预算，同时复制同方向素材做 AB 测试。" : topRecent && topRecent.spend > 0 && topRecent.roi < stable.roi ? "下一步：新素材先控消耗，优先检查素材点击质量和商品承接。" : "下一步：继续积累新素材消耗样本，避免太早判断 ROI。";
       document.getElementById("recentAnalysis").innerHTML = result.recent.length ? analysisHtml([
-        `最近 ${num(state.recentDays, 7)} 天新发布广告素材 ${result.recent.length} 条，合计收入 ${money(recentRevenue)}。`,
-        stable.roi ? `其中 ${recentAboveStable} 条新素材 ROI 达到或超过稳定成交素材基准。` : "当前没有稳定成交 ROI 基准，暂时只看新素材自身排序。",
-        topRecent ? `新素材里当前领先的是「${shortVideoName(topRecent)}」，收入 ${money(topRecent.revenue)}，消耗 ${money(topRecent.spend)}，ROI ${ratio(topRecent.roi)}。` : "",
-        topRecent && stable.roi ? `该素材 ROI 约为稳定素材基准的 ${ratio(topRecent.roi / stable.roi)} 倍。` : ""
+        `判断：${recentJudgement}；最近 ${num(state.recentDays, 7)} 天新素材 ${result.recent.length} 条，合计收入 ${money(recentRevenue)}。`,
+        topRecent ? `依据：当前领先素材「${shortVideoName(topRecent)}」收入 ${money(topRecent.revenue)}、消耗 ${money(topRecent.spend)}、ROI ${ratio(topRecent.roi)}；达标新素材 ${recentAboveStable} 条。` : "",
+        recentNext
       ]) : analysisHtml([`当前筛选周期内没有识别到最近 ${num(state.recentDays, 7)} 天发布的新素材；可检查发布时间列或扩大新素材天数。`]);
 
       const basePeriod = result.periodCompare.base;
       const comparePeriod = result.periodCompare.compare;
       const periodReady = (state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd);
+      const revenueDelta = comparePeriod.totals.revenue - basePeriod.totals.revenue;
+      const spendDelta = comparePeriod.totals.spend - basePeriod.totals.spend;
+      const roiDelta = comparePeriod.roi - basePeriod.roi;
+      const periodJudgement = revenueDelta > 0 && roiDelta >= 0 ? "对比期收入和效率同步变好，可以考虑放量" : revenueDelta > 0 ? "对比期收入增长，但 ROI 承压" : "对比期收入走弱，需要先控预算和查素材衰减";
+      const periodNext = revenueDelta > 0 && roiDelta >= 0 ? "下一步：把预算优先给对比期 ROI 更高的素材和方向。" : spendDelta > 0 && roiDelta < 0 ? "下一步：先暂停或降预算高消耗低 ROI 素材，避免收入增长被成本吞掉。" : "下一步：复查点击率、转化率和商品承接，找到收入下滑的主要环节。";
       document.getElementById("periodCompareAnalysis").innerHTML = periodReady ? analysisHtml([
-        `基期 ${periodRangeText(basePeriod)}，对比期 ${periodRangeText(comparePeriod)}。`,
-        `对比期收入较基期${comparePeriod.totals.revenue >= basePeriod.totals.revenue ? "增加" : "减少"} ${money(Math.abs(comparePeriod.totals.revenue - basePeriod.totals.revenue))}，消耗${comparePeriod.totals.spend >= basePeriod.totals.spend ? "增加" : "减少"} ${money(Math.abs(comparePeriod.totals.spend - basePeriod.totals.spend))}。`,
-        `ROI 由 ${ratio(basePeriod.roi)} 变为 ${ratio(comparePeriod.roi)}，CTR ${rateDiffText(comparePeriod.ctr, basePeriod.ctr)}，广告转化率${rateDiffText(comparePeriod.conversion, basePeriod.conversion)}。`,
-        `对比期订单较基期${comparePeriod.totals.orders >= basePeriod.totals.orders ? "增加" : "减少"} ${money(Math.abs(comparePeriod.totals.orders - basePeriod.totals.orders))}。`
+        `判断：${periodJudgement}；收入${revenueDelta >= 0 ? "增加" : "减少"} ${money(Math.abs(revenueDelta))}，消耗${spendDelta >= 0 ? "增加" : "减少"} ${money(Math.abs(spendDelta))}。`,
+        `依据：ROI 由 ${ratio(basePeriod.roi)} 变为 ${ratio(comparePeriod.roi)}，CTR ${rateDiffText(comparePeriod.ctr, basePeriod.ctr)}，广告转化率${rateDiffText(comparePeriod.conversion, basePeriod.conversion)}。`,
+        periodNext
       ]) : analysisHtml(["设置基期和对比期后，这里会自动比较消耗、收入、ROI、CTR 和转化率的变化。"]);
 
       const topRevenue = result.top.reduce((sum, row) => sum + num(row.revenue), 0);
       const topStableCount = result.top.filter(row => result.stable.some(item => item.key === row.key)).length;
       const bestTop = result.top[0];
+      const topShare = totalRevenue ? topRevenue / totalRevenue : 0;
+      const topJudgement = topShare >= 0.7 ? "收入高度集中在头部广告素材" : topShare >= 0.4 ? "头部素材贡献明显，但还有腰部补充" : "头部素材收入不够集中，仍需继续找爆款";
+      const topNext = bestTop && bestTop.roi >= overall.roi ? "下一步：优先复制 Top 高 ROI 素材的脚本、产品和投放人群。" : "下一步：Top 素材收入高但效率未必最好，放量前要先看 ROI 和单量稳定性。";
       document.getElementById("topAnalysis").innerHTML = result.top.length ? analysisHtml([
-        `Top ${result.top.length} 素材合计收入 ${money(topRevenue)}，占周期收入 ${totalRevenue ? pct(topRevenue / totalRevenue) : "0.00%"}。`,
-        bestTop ? `收入第一素材是「${shortVideoName(bestTop)}」，收入 ${money(bestTop.revenue)}，消耗 ${money(bestTop.spend)}，ROI ${ratio(bestTop.roi)}。` : "",
-        `Top 素材中有 ${topStableCount} 条属于稳定成交素材，说明头部收入${topStableCount ? "有稳定素材承接" : "更多来自短期爆发，需要继续观察持续性"}。`,
-        bestTop ? `该头部素材 CTR ${pct(bestTop.ctr)}、广告转化率 ${pct(bestTop.conversion)}，可优先拆解投放素材脚本和商品承接。` : ""
+        `判断：${topJudgement}；Top ${result.top.length} 素材贡献收入 ${money(topRevenue)}，占周期收入 ${pct(topShare)}。`,
+        bestTop ? `依据：收入第一「${shortVideoName(bestTop)}」收入 ${money(bestTop.revenue)}、消耗 ${money(bestTop.spend)}、ROI ${ratio(bestTop.roi)}；Top 中稳定素材 ${topStableCount} 条。` : "",
+        topNext
       ]) : analysisHtml(["导入广告素材表后，这里会判断周期内贡献收入最多的素材。"]);
 
       const firstDay = result.trend[0];
       const lastDay = result.trend[result.trend.length - 1];
       const peakRoiDay = result.trend.reduce((best, row) => !best || num(row.allRoi) > num(best.allRoi) ? row : best, null);
+      const lastStableShare = lastDay && lastDay.all.revenue ? lastDay.stable.revenue / lastDay.all.revenue : 0;
+      const trendJudgement = firstDay && lastDay && lastDay.all.revenue > firstDay.all.revenue ? "周期尾部收入高于起点，广告素材池仍有放量迹象" : "周期尾部收入没有明显放大，需要关注素材衰减和预算效率";
+      const trendNext = peakRoiDay && lastDay && lastDay.allRoi < peakRoiDay.allRoi ? "下一步：复盘 ROI 峰值日的素材和出价结构，对最近低 ROI 日期先做控成本。" : "下一步：把高 ROI 日期对应的素材、产品和人群沉淀为后续投放基准。";
       document.getElementById("trendAnalysis").innerHTML = result.trend.length ? analysisHtml([
-        firstDay && lastDay ? `从 ${firstDay.date} 到 ${lastDay.date}，收入由 ${money(firstDay.all.revenue)} 变为 ${money(lastDay.all.revenue)}，消耗由 ${money(firstDay.all.spend)} 变为 ${money(lastDay.all.spend)}。` : "",
-        result.trend.length > 1 ? trendChangeText(num(lastDay.all.revenue), num(firstDay.all.revenue), "首尾收入") : "",
-        peakRoiDay ? `周期内 ROI 最高日期是 ${peakRoiDay.date}，ROI ${ratio(peakRoiDay.allRoi)}，当天广告转化率 ${pct(peakRoiDay.allConversion)}。` : "",
-        lastDay && totalRevenue ? `最新一天稳定成交素材收入 ${money(lastDay.stable.revenue)}，占当天收入 ${lastDay.all.revenue ? pct(lastDay.stable.revenue / lastDay.all.revenue) : "0.00%" }。` : ""
+        firstDay && lastDay ? `判断：${trendJudgement}；${firstDay.date} 到 ${lastDay.date}，收入由 ${money(firstDay.all.revenue)} 变为 ${money(lastDay.all.revenue)}，消耗由 ${money(firstDay.all.spend)} 变为 ${money(lastDay.all.spend)}。` : "",
+        peakRoiDay ? `依据：ROI 峰值在 ${peakRoiDay.date}（${ratio(peakRoiDay.allRoi)}），当天广告转化率 ${pct(peakRoiDay.allConversion)}；最新一天稳定素材收入占比 ${pct(lastStableShare)}。` : "",
+        trendNext
       ]) : analysisHtml(["导入广告素材表后会自动比较首尾变化、最近变化和高 ROI 日期。"]);
 
       const visibleStableDetails = result.visibleStableDetails || result.stableDetails;
       const selectedStablePrefix = result.visibleStableLabel ? `当前筛选「${result.visibleStableLabel}」，` : "";
       const bestStableDay = visibleStableDetails.reduce((best, row) => !best || num(row.revenue) > num(best.revenue) ? row : best, null);
       const stableDetailRevenue = visibleStableDetails.reduce((sum, row) => sum + num(row.revenue), 0);
+      const stableDetailSpend = visibleStableDetails.reduce((sum, row) => sum + num(row.spend), 0);
+      const stableDetailRoi = stableDetailSpend ? stableDetailRevenue / stableDetailSpend : 0;
       document.getElementById("stableDetailAnalysis").innerHTML = visibleStableDetails.length ? analysisHtml([
-        `${selectedStablePrefix}稳定成交明细共 ${visibleStableDetails.length} 条记录，覆盖 ${result.visibleStableLabel ? 1 : result.stable.length} 条稳定素材，贡献收入 ${money(stableDetailRevenue)}。`,
-        bestStableDay ? `单日表现最强的是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，收入 ${money(bestStableDay.revenue)}，消耗 ${money(bestStableDay.spend)}，ROI ${ratio(bestStableDay.roi)}。` : "",
-        bestStableDay ? `该记录 CTR ${pct(bestStableDay.ctr)}、广告转化率 ${pct(bestStableDay.conversion)}，可作为稳定素材日常基准样本。` : "",
-        "当前表格最多展示 500 条稳定素材明细；若明细很多，建议配合搜索框按达人、商品或素材关键词过滤。"
+        `判断：${selectedStablePrefix}稳定成交素材可作为投放基准；明细 ${visibleStableDetails.length} 条，收入 ${money(stableDetailRevenue)}，综合 ROI ${ratio(stableDetailRoi)}。`,
+        bestStableDay ? `依据：最强单日是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，收入 ${money(bestStableDay.revenue)}、消耗 ${money(bestStableDay.spend)}、ROI ${ratio(bestStableDay.roi)}。` : "",
+        "下一步：用稳定明细筛选达人、产品、方向，优先复制高 ROI 且多日稳定的组合；样本过多时先按关键词或单个稳定素材过滤。"
       ]) : analysisHtml(["还没有达到稳定成交阈值的素材；可以先降低稳定成交天数或稳定日均订单，找到候选素材池。"]);
     }
     function renderCalendar(result) {
