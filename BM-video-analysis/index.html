@@ -1033,6 +1033,32 @@
       const change = previous ? diff / previous : 0;
       return `${label}${diff >= 0 ? "提升" : "下降"} ${money(Math.abs(diff))}，变化幅度 ${pct(Math.abs(change))}`;
     }
+    function valueShiftText(first, last, label, formatter = money) {
+      if (!first && !last) return `${label}一直为 0`;
+      const diff = last - first;
+      if (!first) return `${label}由 0 变为 ${formatter(last)}`;
+      return `${label}由 ${formatter(first)} 变为 ${formatter(last)}，${diff >= 0 ? "提升" : "下降"} ${pct(Math.abs(diff / first))}`;
+    }
+    function aggregateStableVideoTrend(rows) {
+      const byDate = new Map();
+      rows.forEach(row => {
+        const date = row.date || "";
+        if (!date) return;
+        if (!byDate.has(date)) byDate.set(date, { date, orders: 0, salesQty: 0, w: 0, exposure: 0, clicks: 0, gmv: 0 });
+        const item = byDate.get(date);
+        item.orders += num(row.orders);
+        item.salesQty += num(row.salesQty);
+        item.w += num(row.w);
+        item.exposure += num(row.exposure);
+        item.clicks += num(row.clicks);
+        item.gmv += num(row.gmv);
+      });
+      return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(b.date)).map(row => ({
+        ...row,
+        ctr: row.w ? row.clicks / row.w : 0,
+        conversion: row.clicks ? row.orders / row.clicks : 0
+      }));
+    }
     function renderModuleAnalyses(result) {
       const totalOrders = num(result.overallBaseline.totalOrders);
       const totalGmv = num(result.overallBaseline.totalGmv);
@@ -1118,13 +1144,52 @@
 
       const visibleStableDetails = result.visibleStableDetails || result.stableDetails;
       const selectedStablePrefix = result.visibleStableLabel ? `当前筛选「${result.visibleStableLabel}」，` : "";
-      const bestStableDay = visibleStableDetails.reduce((best, row) => !best || num(row.orders) > num(best.orders) ? row : best, null);
+      const stableTrendRows = aggregateStableVideoTrend(visibleStableDetails);
+      const firstStableDay = stableTrendRows[0];
+      const lastStableDay = stableTrendRows.at(-1);
+      const bestStableDay = stableTrendRows.reduce((best, row) => !best || num(row.orders) > num(best.orders) ? row : best, null);
       const stableGmv = visibleStableDetails.reduce((sum, row) => sum + num(row.gmv), 0);
-      const stableDetailAvg = visibleStableDetails.length ? visibleStableDetails.reduce((sum, row) => sum + num(row.orders), 0) / visibleStableDetails.length : 0;
+      const stableDetailAvg = stableTrendRows.length ? stableTrendRows.reduce((sum, row) => sum + num(row.orders), 0) / stableTrendRows.length : 0;
+      const recentStableDays = stableTrendRows.slice(-Math.min(3, stableTrendRows.length));
+      const previousStableDays = stableTrendRows.slice(-Math.min(6, stableTrendRows.length), -Math.min(3, stableTrendRows.length));
+      const recentStableAvg = avgMetric(recentStableDays, row => row.orders);
+      const previousStableAvg = avgMetric(previousStableDays, row => row.orders);
+      const peakDrop = bestStableDay?.orders ? (num(lastStableDay?.orders) - num(bestStableDay.orders)) / num(bestStableDay.orders) : 0;
+      const stableTrendJudgement = stableTrendRows.length < 2
+        ? "样本天数较少，暂时只能看单日表现"
+        : peakDrop <= -0.5
+          ? "峰值后已经明显回落，需要判断是自然流量衰减还是转化变差"
+          : previousStableDays.length && recentStableAvg >= previousStableAvg * 1.15
+            ? "最近阶段重新抬升，说明该素材仍有继续放量机会"
+            : lastStableDay.orders >= firstStableDay.orders
+              ? "整体仍高于起点，但要看峰值后是否还能维持"
+              : "整体较起点回落，稳定性开始变弱";
+      let stableDetailDriver = "";
+      let stableDetailNext = "下一步：继续按天观察该素材，优先保留高订单且 CTR、转化率不下滑的日期作为复盘样本。";
+      if (bestStableDay && lastStableDay && bestStableDay.date !== lastStableDay.date && lastStableDay.orders < bestStableDay.orders * 0.7) {
+        if (lastStableDay.w < bestStableDay.w * 0.7 || lastStableDay.exposure < bestStableDay.exposure * 0.7) {
+          stableDetailDriver = `主要变化：峰值后流量回落更明显，VV/播放量从 ${money0.format(bestStableDay.w)} 降到 ${money0.format(lastStableDay.w)}，商品曝光从 ${money0.format(bestStableDay.exposure)} 降到 ${money0.format(lastStableDay.exposure)}。`;
+          stableDetailNext = "下一步：优先复盘峰值日前后的发布时间、互动和推荐入口，尝试二次推流；同时用同达人/同产品方向复拍，避免只依赖单条素材。";
+        } else if (lastStableDay.ctr < bestStableDay.ctr - 0.01) {
+          stableDetailDriver = `主要变化：流量还在，但点击率从 ${pct(bestStableDay.ctr)} 降到 ${pct(lastStableDay.ctr)}，素材吸引力在衰退。`;
+          stableDetailNext = "下一步：保留原脚本卖点，重点重做封面、前 3 秒钩子和字幕利益点。";
+        } else if (lastStableDay.conversion < bestStableDay.conversion - 0.005) {
+          stableDetailDriver = `主要变化：点击后转化走弱，转化率从 ${pct(bestStableDay.conversion)} 降到 ${pct(lastStableDay.conversion)}。`;
+          stableDetailNext = "下一步：检查价格、优惠、商品页承接和库存评价，优先修转化而不是盲目补流量。";
+        } else {
+          stableDetailDriver = "主要变化：订单回落但 CTR、转化率没有明显同步恶化，更像流量分配或素材热度周期问题。";
+          stableDetailNext = "下一步：用峰值日素材做二次分发和复拍，并观察是否能重新拿到曝光。";
+        }
+      } else if (previousStableDays.length) {
+        stableDetailDriver = `阶段变化：最近 ${recentStableDays.length} 天日均订单 ${money(recentStableAvg)}，前一段 ${money(previousStableAvg)}，${recentStableAvg >= previousStableAvg ? "近期仍在抬升或维持" : "近期有走弱迹象"}。`;
+      } else if (firstStableDay && lastStableDay) {
+        stableDetailDriver = `首尾变化：${valueShiftText(firstStableDay.orders, lastStableDay.orders, "订单")}，${valueShiftText(firstStableDay.w, lastStableDay.w, "VV/播放量", value => money0.format(num(value)))}。`;
+      }
       document.getElementById("stableDetailAnalysis").innerHTML = visibleStableDetails.length ? analysisHtml([
-        `判断：${selectedStablePrefix}稳定素材已经有可复用样本；明细 ${visibleStableDetails.length} 条，贡献 GMV ${money(stableGmv)}，单日平均订单 ${money(stableDetailAvg)}。`,
-        bestStableDay ? `依据：最强单日是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，订单 ${money(bestStableDay.orders)}，CTR ${pct(bestStableDay.ctr)}，转化率 ${pct(bestStableDay.conversion)}。` : "",
-        "下一步：用稳定明细筛选达人、产品、方向，找出可长期复投的素材组合；若样本太多，先按关键词或单个稳定素材过滤。"
+        `判断：${selectedStablePrefix}${stableTrendJudgement}；共 ${stableTrendRows.length} 天趋势，贡献 GMV ${money(stableGmv)}，日均订单 ${money(stableDetailAvg)}。`,
+        bestStableDay ? `峰值：${bestStableDay.date} 订单 ${money(bestStableDay.orders)}、VV ${money0.format(bestStableDay.w)}、CTR ${pct(bestStableDay.ctr)}、转化率 ${pct(bestStableDay.conversion)}；最新日订单 ${money(lastStableDay.orders)}。` : "",
+        stableDetailDriver,
+        stableDetailNext
       ]) : analysisHtml(["还没有达到稳定出单阈值的素材；可以先降低稳定出单天数或稳定日均订单，找到候选素材池。"]);
     }
     function renderCalendar(result) {

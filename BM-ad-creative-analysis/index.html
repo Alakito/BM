@@ -1025,6 +1025,32 @@
       const change = previous ? diff / previous : 0;
       return `${label}${diff >= 0 ? "提升" : "下降"} ${formatter(Math.abs(diff))}，变化幅度 ${pct(Math.abs(change))}`;
     }
+    function valueShiftText(first, last, label, formatter = money) {
+      if (!first && !last) return `${label}一直为 0`;
+      const diff = last - first;
+      if (!first) return `${label}由 0 变为 ${formatter(last)}`;
+      return `${label}由 ${formatter(first)} 变为 ${formatter(last)}，${diff >= 0 ? "提升" : "下降"} ${pct(Math.abs(diff / first))}`;
+    }
+    function aggregateStableAdTrend(rows) {
+      const byDate = new Map();
+      rows.forEach(row => {
+        const date = row.date || "";
+        if (!date) return;
+        if (!byDate.has(date)) byDate.set(date, { date, spend: 0, revenue: 0, orders: 0, exposure: 0, clicks: 0 });
+        const item = byDate.get(date);
+        item.spend += num(row.spend);
+        item.revenue += num(row.revenue);
+        item.orders += num(row.orders);
+        item.exposure += num(row.exposure);
+        item.clicks += num(row.clicks);
+      });
+      return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(b.date)).map(row => ({
+        ...row,
+        roi: row.spend ? row.revenue / row.spend : 0,
+        ctr: row.exposure ? row.clicks / row.exposure : 0,
+        conversion: row.clicks ? row.orders / row.clicks : 0
+      }));
+    }
     function renderModuleAnalyses(result) {
       const totalSpend = num(result.overallBaseline.totalSpend);
       const totalRevenue = num(result.overallBaseline.totalRevenue);
@@ -1110,14 +1136,57 @@
 
       const visibleStableDetails = result.visibleStableDetails || result.stableDetails;
       const selectedStablePrefix = result.visibleStableLabel ? `当前筛选「${result.visibleStableLabel}」，` : "";
-      const bestStableDay = visibleStableDetails.reduce((best, row) => !best || num(row.revenue) > num(best.revenue) ? row : best, null);
+      const stableTrendRows = aggregateStableAdTrend(visibleStableDetails);
+      const firstStableDay = stableTrendRows[0];
+      const lastStableDay = stableTrendRows.at(-1);
+      const bestStableDay = stableTrendRows.reduce((best, row) => !best || num(row.revenue) > num(best.revenue) ? row : best, null);
+      const bestRoiDay = stableTrendRows.reduce((best, row) => !best || num(row.roi) > num(best.roi) ? row : best, null);
       const stableDetailRevenue = visibleStableDetails.reduce((sum, row) => sum + num(row.revenue), 0);
       const stableDetailSpend = visibleStableDetails.reduce((sum, row) => sum + num(row.spend), 0);
       const stableDetailRoi = stableDetailSpend ? stableDetailRevenue / stableDetailSpend : 0;
+      const recentStableDays = stableTrendRows.slice(-Math.min(3, stableTrendRows.length));
+      const previousStableDays = stableTrendRows.slice(-Math.min(6, stableTrendRows.length), -Math.min(3, stableTrendRows.length));
+      const recentStableRevenue = avgMetric(recentStableDays, row => row.revenue);
+      const previousStableRevenue = avgMetric(previousStableDays, row => row.revenue);
+      const peakDrop = bestStableDay?.revenue ? (num(lastStableDay?.revenue) - num(bestStableDay.revenue)) / num(bestStableDay.revenue) : 0;
+      const stableTrendJudgement = stableTrendRows.length < 2
+        ? "样本天数较少，暂时只能看单日收入和 ROI"
+        : peakDrop <= -0.5
+          ? "收入峰值后明显回落，需要拆分是预算收缩还是投放效率下降"
+          : previousStableDays.length && recentStableRevenue >= previousStableRevenue * 1.15
+            ? "最近阶段收入重新抬升，仍有继续投放观察价值"
+            : lastStableDay.revenue >= firstStableDay.revenue
+              ? "最新收入仍高于起点，但要继续看 ROI 是否守得住"
+              : "最新收入低于起点，素材进入衰退或预算收缩阶段";
+      let stableDetailDriver = "";
+      let stableDetailNext = "下一步：继续按天观察收入、消耗和 ROI，优先保留收入稳定且 ROI 不低于大盘的日期作为投放基准。";
+      if (bestStableDay && lastStableDay && bestStableDay.date !== lastStableDay.date && lastStableDay.revenue < bestStableDay.revenue * 0.7) {
+        if (lastStableDay.spend < bestStableDay.spend * 0.7) {
+          stableDetailDriver = `主要变化：收入回落首先来自消耗收缩，消耗从 ${money(bestStableDay.spend)} 降到 ${money(lastStableDay.spend)}，收入从 ${money(bestStableDay.revenue)} 降到 ${money(lastStableDay.revenue)}。`;
+          stableDetailNext = "下一步：如果峰值日 ROI 达标，可尝试小步恢复预算；如果恢复后 ROI 掉，说明素材热度已衰退。";
+        } else if (lastStableDay.roi < bestStableDay.roi * 0.8) {
+          stableDetailDriver = `主要变化：消耗没有同比例下降，但 ROI 从 ${ratio(bestStableDay.roi)} 降到 ${ratio(lastStableDay.roi)}，效率衰退更明显。`;
+          stableDetailNext = "下一步：先控预算，复查点击率、转化率和商品承接，不建议直接放大消耗。";
+        } else if (lastStableDay.ctr < bestStableDay.ctr - 0.01) {
+          stableDetailDriver = `主要变化：点击率从 ${pct(bestStableDay.ctr)} 降到 ${pct(lastStableDay.ctr)}，素材吸引力在变弱。`;
+          stableDetailNext = "下一步：保留原素材卖点，优先重做封面、前 3 秒和标题钩子。";
+        } else if (lastStableDay.conversion < bestStableDay.conversion - 0.005) {
+          stableDetailDriver = `主要变化：广告点击后的成交效率下降，转化率从 ${pct(bestStableDay.conversion)} 降到 ${pct(lastStableDay.conversion)}。`;
+          stableDetailNext = "下一步：检查商品页、价格优惠和库存评价，先修成交承接。";
+        } else {
+          stableDetailDriver = "主要变化：收入回落但 ROI、CTR、转化率没有明显恶化，更像预算分配或素材生命周期问题。";
+          stableDetailNext = "下一步：用峰值日设置做小预算复测，确认是否还能重新放量。";
+        }
+      } else if (previousStableDays.length) {
+        stableDetailDriver = `阶段变化：最近 ${recentStableDays.length} 天日均收入 ${money(recentStableRevenue)}，前一段 ${money(previousStableRevenue)}，${recentStableRevenue >= previousStableRevenue ? "近期仍在抬升或维持" : "近期有走弱迹象"}。`;
+      } else if (firstStableDay && lastStableDay) {
+        stableDetailDriver = `首尾变化：${valueShiftText(firstStableDay.revenue, lastStableDay.revenue, "收入")}，${valueShiftText(firstStableDay.spend, lastStableDay.spend, "消耗")}。`;
+      }
       document.getElementById("stableDetailAnalysis").innerHTML = visibleStableDetails.length ? analysisHtml([
-        `判断：${selectedStablePrefix}稳定成交素材可作为投放基准；明细 ${visibleStableDetails.length} 条，收入 ${money(stableDetailRevenue)}，综合 ROI ${ratio(stableDetailRoi)}。`,
-        bestStableDay ? `依据：最强单日是 ${bestStableDay.date} 的「${shortVideoName(bestStableDay)}」，收入 ${money(bestStableDay.revenue)}、消耗 ${money(bestStableDay.spend)}、ROI ${ratio(bestStableDay.roi)}。` : "",
-        "下一步：用稳定明细筛选达人、产品、方向，优先复制高 ROI 且多日稳定的组合；样本过多时先按关键词或单个稳定素材过滤。"
+        `判断：${selectedStablePrefix}${stableTrendJudgement}；共 ${stableTrendRows.length} 天趋势，收入 ${money(stableDetailRevenue)}，综合 ROI ${ratio(stableDetailRoi)}。`,
+        bestStableDay ? `峰值：收入最高在 ${bestStableDay.date}，收入 ${money(bestStableDay.revenue)}、消耗 ${money(bestStableDay.spend)}、ROI ${ratio(bestStableDay.roi)}；ROI 最高在 ${bestRoiDay.date}（${ratio(bestRoiDay.roi)}）。` : "",
+        stableDetailDriver,
+        stableDetailNext
       ]) : analysisHtml(["还没有达到稳定成交阈值的素材；可以先降低稳定成交天数或稳定日均订单，找到候选素材池。"]);
     }
     function renderCalendar(result) {
