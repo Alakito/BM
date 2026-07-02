@@ -75,6 +75,11 @@
       font-weight: 800;
     }
     input[type="file"] { display: none; }
+    input.meta-input {
+      width: 104px;
+      padding: 6px 8px;
+      font-size: 12px;
+    }
     label { min-width: 145px; color: var(--muted); font-size: 12px; font-weight: 900; }
     .filters .wide { min-width: 260px; }
     .panel {
@@ -643,10 +648,48 @@
       }
       return null;
     }
-    function publishInfoCells(meta) {
-      const empty = `<td class="note">-</td>`;
-      if (!meta) return empty + empty + empty + empty + empty;
-      return `<td>${escapeHtml(meta.product || "-")}</td><td>${escapeHtml(meta.direction || "-")}</td><td>${escapeHtml(meta.type || "-")}</td><td>${escapeHtml(meta.lot || "-")}</td><td>${escapeHtml(meta.follower || "-")}</td>`;
+    function normalizeEditableMetadataValue(field, value) {
+      const text = String(value || "").trim();
+      if (!text) return "";
+      if (field === "type") return text.toUpperCase();
+      if (field === "lot") return /^lot/i.test(text) ? text.toUpperCase() : (/^\d+$/.test(text) ? `LOT${text}` : text);
+      return text;
+    }
+    function editablePublishField(row, meta, field, placeholder) {
+      const vid = normalizeLookupVid(row.videoId || meta?.vid);
+      const id = normalizeLookupId(row.creatorId || row.creator || meta?.idTikTok || meta?.idKey);
+      const disabled = !vid && !id;
+      return `<td><input class="meta-input" data-meta-field="${field}" data-meta-vid="${escapeHtml(vid)}" data-meta-id="${escapeHtml(id)}" data-meta-creator="${escapeHtml(row.creator || meta?.idTikTok || "")}" value="${escapeHtml(meta?.[field] || "")}" placeholder="${escapeHtml(placeholder)}" ${disabled ? "disabled" : ""}></td>`;
+    }
+    function publishInfoCells(row, meta) {
+      return editablePublishField(row, meta, "product", "产品")
+        + editablePublishField(row, meta, "direction", "方向")
+        + editablePublishField(row, meta, "type", "KOL/KOC")
+        + editablePublishField(row, meta, "lot", "LOT")
+        + `<td>${escapeHtml(meta?.follower || "-")}</td>`;
+    }
+    function savePublishMetadataField(vid, id, creator, field, value) {
+      if (!["product", "direction", "type", "lot"].includes(field)) return;
+      const normalizedVid = normalizeLookupVid(vid);
+      const normalizedId = normalizeLookupId(id || creator);
+      const nextValue = normalizeEditableMetadataValue(field, value);
+      const rows = [...(state.metadataRows || [])];
+      let index = normalizedVid ? rows.findIndex(row => normalizeLookupVid(row.vid) === normalizedVid) : -1;
+      if (index < 0 && normalizedId) {
+        const matches = rows.map((row, i) => ({ row, i })).filter(item => normalizeLookupId(item.row.idTikTok || item.row.idKey) === normalizedId);
+        if (matches.length === 1) index = matches[0].i;
+      }
+      const current = index >= 0 ? rows[index] : { idTikTok: creator || id || "", idKey: normalizedId, vid: normalizedVid };
+      const next = { ...current, [field]: nextValue };
+      if (normalizedVid) next.vid = normalizedVid;
+      if (normalizedId) next.idKey = normalizedId;
+      if (!next.idTikTok && creator) next.idTikTok = creator;
+      if (index >= 0) rows[index] = next; else rows.push(next);
+      state.metadataRows = mergeMetadataRows(rows, []);
+      saveState();
+      render();
+      const status = document.getElementById("metadataStatus");
+      if (status) status.textContent = `已保存手动补充：${field} = ${nextValue || "空"}。`;
     }
     function publishInfoFields(row) {
       const meta = publishInfoFor(row);
@@ -1255,14 +1298,14 @@
       document.getElementById("recentTable").innerHTML = `<tr><th>广告素材</th><th>产品</th><th>方向</th><th>类型</th><th>批次</th><th>粉丝</th><th>发布时间</th><th class="num">发布天数</th><th class="num">消耗</th><th class="num">收入</th><th class="num">ROI</th><th class="num">订单</th><th class="num">CTR</th><th class="num">广告转化率</th><th class="num">2秒播放率</th></tr>` +
         (result.recent.length ? result.recent.map(row => {
           const publishInfo = publishInfoFor(row);
-          return `<tr><td>${videoLabel(row)}</td>${publishInfoCells(publishInfo)}<td>${row.publishDate || ""}</td><td class="num">${row.ageDays == null ? "" : row.ageDays + 1}</td><td class="num">${money(row.spend)}</td><td class="num">${money(row.revenue)}</td><td class="num">${ratio(row.roi)}</td><td class="num">${money(row.orders)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${pct(row.play2Rate)}</td></tr>`;
+          return `<tr><td>${videoLabel(row)}</td>${publishInfoCells(row, publishInfo)}<td>${row.publishDate || ""}</td><td class="num">${row.ageDays == null ? "" : row.ageDays + 1}</td><td class="num">${money(row.spend)}</td><td class="num">${money(row.revenue)}</td><td class="num">${ratio(row.roi)}</td><td class="num">${money(row.orders)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${pct(row.play2Rate)}</td></tr>`;
         }).join("") : `<tr><td colspan="15" class="center">当前周期内没有识别到最近新发布广告素材。</td></tr>`);
       document.getElementById("topTable").innerHTML = `<tr><th>广告素材</th><th>产品</th><th>方向</th><th>类型</th><th>批次</th><th>粉丝</th><th>发布时间</th><th class="num">活跃天</th><th class="num">成交天</th><th class="num">消耗</th><th class="num">收入</th><th class="num">ROI</th><th class="num">订单</th><th class="num">平均下单成本</th><th class="num">广告曝光</th><th class="num">广告点击</th><th class="num">CTR</th><th class="num">广告转化率</th><th>标签/状态</th></tr>` +
         (result.top.length ? result.top.map(row => {
           const stable = result.stable.some(item => item.key === row.key);
           const status = [row.tag, row.authStatus, stable ? "稳定成交" : "观察"].filter(Boolean).join(" / ");
           const publishInfo = publishInfoFor(row);
-          return `<tr><td>${videoLabel(row)}</td>${publishInfoCells(publishInfo)}<td>${row.publishDate || ""}</td><td class="num">${row.activeDays}</td><td class="num">${row.orderDays}</td><td class="num">${money(row.spend)}</td><td class="num">${money(row.revenue)}</td><td class="num ${row.roi >= 1 ? "good" : "mid"}">${ratio(row.roi)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.avgOrderCost)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="${stable ? "good" : "mid"}">${escapeHtml(status)}</td></tr>`;
+          return `<tr><td>${videoLabel(row)}</td>${publishInfoCells(row, publishInfo)}<td>${row.publishDate || ""}</td><td class="num">${row.activeDays}</td><td class="num">${row.orderDays}</td><td class="num">${money(row.spend)}</td><td class="num">${money(row.revenue)}</td><td class="num ${row.roi >= 1 ? "good" : "mid"}">${ratio(row.roi)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.avgOrderCost)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="${stable ? "good" : "mid"}">${escapeHtml(status)}</td></tr>`;
         }).join("") : `<tr><td colspan="19">导入广告素材表后显示。</td></tr>`);
       document.getElementById("trendTable").innerHTML = `<tr><th>日期</th><th class="num">素材数</th><th class="num">消耗</th><th class="num">收入</th><th class="num">ROI</th><th class="num">订单</th><th class="num">广告曝光</th><th class="num">广告点击</th><th class="num">CTR</th><th class="num">广告转化率</th><th class="num">2秒播放率</th><th class="num">6秒播放率</th><th class="num">稳定收入</th><th class="num">稳定ROI</th></tr>` +
         (result.trend.length ? result.trend.map(row => `<tr><td>${row.date}</td><td class="num">${row.videos}</td><td class="num">${money(row.all.spend)}</td><td class="num">${money(row.all.revenue)}</td><td class="num">${ratio(row.allRoi)}</td><td class="num">${money(row.all.orders)}</td><td class="num">${money0.format(row.all.exposure)}</td><td class="num">${money0.format(row.all.clicks)}</td><td class="num">${pct(row.allCtr)}</td><td class="num">${pct(row.allConversion)}</td><td class="num">${pct(row.allPlay2Rate)}</td><td class="num">${pct(row.allPlay6Rate)}</td><td class="num">${money(row.stable.revenue)}</td><td class="num">${ratio(row.stableRoi)}</td></tr>`).join("") : `<tr><td colspan="14">导入广告素材表后显示趋势。</td></tr>`);
@@ -1272,7 +1315,7 @@
       document.getElementById("stableDetailTable").innerHTML = `<tr><th>日期</th><th>广告素材</th><th>产品</th><th>方向</th><th>类型</th><th>批次</th><th>粉丝</th><th class="num">消耗</th><th class="num">收入</th><th class="num">ROI</th><th class="num">订单</th><th class="num">平均下单成本</th><th class="num">广告曝光</th><th class="num">广告点击</th><th class="num">CTR</th><th class="num">广告转化率</th><th>标签</th></tr>` +
         (visibleStableDetails.length ? visibleStableDetails.slice(0, 500).map(row => {
           const publishInfo = publishInfoFor(row);
-          return `<tr><td>${row.date}</td><td>${videoLabel(row)}</td>${publishInfoCells(publishInfo)}<td class="num">${money(row.spend)}</td><td class="num">${money(row.revenue)}</td><td class="num">${ratio(row.roi)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.avgOrderCost)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td>${escapeHtml(row.tag || row.authStatus || "")}</td></tr>`;
+          return `<tr><td>${row.date}</td><td>${videoLabel(row)}</td>${publishInfoCells(row, publishInfo)}<td class="num">${money(row.spend)}</td><td class="num">${money(row.revenue)}</td><td class="num">${ratio(row.roi)}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.avgOrderCost)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td>${escapeHtml(row.tag || row.authStatus || "")}</td></tr>`;
         }).join("") : `<tr><td colspan="17">暂无稳定成交广告素材明细。</td></tr>`);
       document.getElementById("trendValueMetrics").innerHTML = metricCheckboxes(valueMetrics, state.trendValueMetrics, "trendValueMetrics");
       document.getElementById("trendRateMetrics").innerHTML = metricCheckboxes(rateMetrics, state.trendRateMetrics, "trendRateMetrics");
@@ -1315,6 +1358,15 @@
         });
       });
     }
+    document.addEventListener("change", event => {
+      const target = event.target;
+      if (!target?.classList?.contains("meta-input")) return;
+      savePublishMetadataField(target.dataset.metaVid, target.dataset.metaId, target.dataset.metaCreator, target.dataset.metaField, target.value);
+    });
+    document.addEventListener("keydown", event => {
+      const target = event.target;
+      if (event.key === "Enter" && target?.classList?.contains("meta-input")) target.blur();
+    });
     document.getElementById("detailFile").onchange = async event => {
       const file = event.target.files?.[0];
       if (!file) return;
