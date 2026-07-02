@@ -509,6 +509,9 @@
       }
       return "";
     }
+    function firstFilled(...values) {
+      return values.find(value => String(value ?? "").trim() !== "") ?? "";
+    }
     function recordExactValue(record, aliases) {
       for (const alias of aliases) {
         const normalized = normalizeHeaderName(alias);
@@ -583,13 +586,31 @@
       const digits = text.replace(/\D+/g, "");
       return digits || text.toLowerCase();
     }
+    function metadataCompleteness(row) {
+      return ["product", "direction", "type", "lot", "follower", "idTikTok", "vid"].reduce((score, key) => score + (String(row[key] || "").trim() ? 1 : 0), 0);
+    }
+    function betterMetadataRow(current, next) {
+      if (!current) return next;
+      if (!next) return current;
+      return metadataCompleteness(next) >= metadataCompleteness(current) ? { ...current, ...next } : current;
+    }
     function metadataRowKey(row) {
-      return [row.vid || "", normalizeLookupId(row.idTikTok), row.type || "", row.lot || "", row.product || "", row.direction || ""].join("__");
+      const vid = normalizeLookupVid(row.vid);
+      if (vid) return `vid__${vid}`;
+      const id = normalizeLookupId(row.idTikTok || row.idKey);
+      if (id) return `id__${id}__${row.product || ""}__${row.direction || ""}__${row.lot || ""}`;
+      return [row.type || "", row.lot || "", row.product || "", row.direction || ""].join("__");
     }
     function mergeMetadataRows(existing, incoming) {
       const merged = new Map();
-      existing.forEach(row => merged.set(metadataRowKey(row), row));
-      incoming.forEach(row => merged.set(metadataRowKey(row), row));
+      existing.forEach(row => {
+        const key = metadataRowKey(row);
+        merged.set(key, betterMetadataRow(merged.get(key), row));
+      });
+      incoming.forEach(row => {
+        const key = metadataRowKey(row);
+        merged.set(key, betterMetadataRow(merged.get(key), row));
+      });
       return [...merged.values()].sort((a, b) => String(a.idTikTok || "").localeCompare(String(b.idTikTok || "")) || String(a.vid || "").localeCompare(String(b.vid || "")));
     }
     function expandWorksheetRange(sheet) {
@@ -623,21 +644,30 @@
       const headers = rows[headerIndex];
       const parsed = rows.slice(headerIndex + 1).map(row => {
         const record = recordFromRow(headers, row);
-        const idTikTok = String(recordValue(record, ["ID TIKTOK", "TikTok ID", "达人ID", "账号ID", "ID"])).trim();
-        const vidRaw = recordValue(record, ["VID", "Video ID", "视频ID"]);
+        const fixed = {
+          idTikTok: row[0],
+          type: row[2],
+          follower: row[3],
+          lot: row[4],
+          product: row[5],
+          direction: row[6],
+          vid: row[7]
+        };
+        const idTikTok = String(firstFilled(fixed.idTikTok, recordValue(record, ["ID TIKTOK", "TikTok ID", "达人ID", "账号ID", "ID"]))).trim();
+        const vidRaw = firstFilled(fixed.vid, recordValue(record, ["VID", "Video ID", "视频ID"]));
         const vid = normalizeLookupVid(vidRaw);
         if (!idTikTok && !vid) return null;
-        const lotRaw = String(recordValue(record, ["LOT", "批次", "Batch"])).trim();
+        const lotRaw = String(firstFilled(fixed.lot, recordValue(record, ["LOT", "批次", "Batch"]))).trim();
         const lot = lotRaw ? (/^lot/i.test(lotRaw) ? lotRaw.toUpperCase() : `LOT${lotRaw}`) : "";
         return {
           idTikTok,
           idKey: normalizeLookupId(idTikTok),
           vid,
-          type: String(recordValue(record, ["TYPE", "类型", "KOL/KOC"])).trim().toUpperCase(),
-          follower: String(recordValue(record, ["Follower", "粉丝量", "粉丝"])).trim(),
+          type: String(firstFilled(fixed.type, recordValue(record, ["TYPE", "类型", "KOL/KOC"]))).trim().toUpperCase(),
+          follower: String(firstFilled(fixed.follower, recordValue(record, ["Follower", "粉丝量", "粉丝"]))).trim(),
           lot,
-          product: String(recordValue(record, ["Product", "产品"])).trim(),
-          direction: String(recordValue(record, ["Direction", "方向", "产品方向"])).trim()
+          product: String(firstFilled(fixed.product, recordValue(record, ["Product", "产品"]))).trim(),
+          direction: String(firstFilled(fixed.direction, recordValue(record, ["Direction", "方向", "产品方向"]))).trim()
         };
       }).filter(Boolean);
       if (!parsed.length) throw new Error("发布信息表没有可导入的数据。");
@@ -647,7 +677,7 @@
       const byVid = new Map();
       const byId = new Map();
       (state.metadataRows || []).forEach(row => {
-        if (row.vid && !byVid.has(row.vid)) byVid.set(row.vid, row);
+        if (row.vid) byVid.set(row.vid, betterMetadataRow(byVid.get(row.vid), row));
         const key = normalizeLookupId(row.idTikTok || row.idKey);
         if (key) {
           if (!byId.has(key)) byId.set(key, []);
