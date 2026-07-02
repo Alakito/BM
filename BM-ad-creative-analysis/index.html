@@ -80,6 +80,34 @@
       padding: 6px 8px;
       font-size: 12px;
     }
+    .meta-cell {
+      min-width: 110px;
+      white-space: nowrap;
+    }
+    .meta-text {
+      font-weight: 800;
+    }
+    .meta-empty {
+      color: var(--muted);
+    }
+    .meta-actions {
+      display: inline-flex;
+      gap: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    button.meta-mini {
+      padding: 4px 7px;
+      border-radius: 999px;
+      font-size: 11px;
+      line-height: 1;
+      box-shadow: none;
+    }
+    button.meta-save {
+      color: #fff;
+      border-color: transparent;
+      background: var(--primary);
+    }
     label { min-width: 145px; color: var(--muted); font-size: 12px; font-weight: 900; }
     .filters .wide { min-width: 260px; }
     .panel {
@@ -659,7 +687,15 @@
       const vid = normalizeLookupVid(row.videoId || meta?.vid);
       const id = normalizeLookupId(row.creatorId || row.creator || meta?.idTikTok || meta?.idKey);
       const disabled = !vid && !id;
-      return `<td><input class="meta-input" data-meta-field="${field}" data-meta-vid="${escapeHtml(vid)}" data-meta-id="${escapeHtml(id)}" data-meta-creator="${escapeHtml(row.creator || meta?.idTikTok || "")}" value="${escapeHtml(meta?.[field] || "")}" placeholder="${escapeHtml(placeholder)}" ${disabled ? "disabled" : ""}></td>`;
+      const editKey = vid ? `vid__${vid}` : (id ? `id__${id}` : "");
+      const editing = editKey && state.metaEditKey === editKey;
+      const value = String(meta?.[field] || "");
+      if (!editing) {
+        const editButton = field === "product" && !disabled ? `<span class="meta-actions"><button class="meta-mini meta-edit-button" data-meta-edit-key="${escapeHtml(editKey)}" type="button">修改</button></span>` : "";
+        return `<td class="meta-cell"><span class="${value ? "meta-text" : "meta-empty"}">${escapeHtml(value || "-")}</span>${editButton}</td>`;
+      }
+      const actions = field === "product" ? `<span class="meta-actions"><button class="meta-mini meta-save meta-save-button" data-meta-vid="${escapeHtml(vid)}" data-meta-id="${escapeHtml(id)}" data-meta-creator="${escapeHtml(row.creator || meta?.idTikTok || "")}" type="button">保存</button><button class="meta-mini meta-cancel-button" type="button">取消</button></span>` : "";
+      return `<td class="meta-cell"><input class="meta-input" data-meta-field="${field}" value="${escapeHtml(value)}" placeholder="${escapeHtml(placeholder)}" ${disabled ? "disabled" : ""}>${actions}</td>`;
     }
     function publishInfoCells(row, meta) {
       return editablePublishField(row, meta, "product", "产品")
@@ -670,9 +706,11 @@
     }
     function savePublishMetadataField(vid, id, creator, field, value) {
       if (!["product", "direction", "type", "lot"].includes(field)) return;
+      savePublishMetadataFields(vid, id, creator, { [field]: value });
+    }
+    function savePublishMetadataFields(vid, id, creator, values) {
       const normalizedVid = normalizeLookupVid(vid);
       const normalizedId = normalizeLookupId(id || creator);
-      const nextValue = normalizeEditableMetadataValue(field, value);
       const rows = [...(state.metadataRows || [])];
       let index = normalizedVid ? rows.findIndex(row => normalizeLookupVid(row.vid) === normalizedVid) : -1;
       if (index < 0 && normalizedId) {
@@ -680,16 +718,20 @@
         if (matches.length === 1) index = matches[0].i;
       }
       const current = index >= 0 ? rows[index] : { idTikTok: creator || id || "", idKey: normalizedId, vid: normalizedVid };
-      const next = { ...current, [field]: nextValue };
+      const next = { ...current };
+      ["product", "direction", "type", "lot"].forEach(field => {
+        if (Object.prototype.hasOwnProperty.call(values, field)) next[field] = normalizeEditableMetadataValue(field, values[field]);
+      });
       if (normalizedVid) next.vid = normalizedVid;
       if (normalizedId) next.idKey = normalizedId;
       if (!next.idTikTok && creator) next.idTikTok = creator;
       if (index >= 0) rows[index] = next; else rows.push(next);
       state.metadataRows = mergeMetadataRows(rows, []);
+      state.metaEditKey = "";
       saveState();
       render();
       const status = document.getElementById("metadataStatus");
-      if (status) status.textContent = `已保存手动补充：${field} = ${nextValue || "空"}。`;
+      if (status) status.textContent = `已保存手动补充：产品/方向/类型/批次。`;
     }
     function publishInfoFields(row) {
       const meta = publishInfoFor(row);
@@ -1375,14 +1417,37 @@
         });
       });
     }
-    document.addEventListener("change", event => {
+    document.addEventListener("click", event => {
       const target = event.target;
-      if (!target?.classList?.contains("meta-input")) return;
-      savePublishMetadataField(target.dataset.metaVid, target.dataset.metaId, target.dataset.metaCreator, target.dataset.metaField, target.value);
+      if (target?.classList?.contains("meta-edit-button")) {
+        state.metaEditKey = target.dataset.metaEditKey || "";
+        render();
+        return;
+      }
+      if (target?.classList?.contains("meta-cancel-button")) {
+        state.metaEditKey = "";
+        render();
+        return;
+      }
+      if (target?.classList?.contains("meta-save-button")) {
+        const row = target.closest("tr");
+        const values = {};
+        row?.querySelectorAll(".meta-input").forEach(input => values[input.dataset.metaField] = input.value);
+        savePublishMetadataFields(target.dataset.metaVid, target.dataset.metaId, target.dataset.metaCreator, values);
+      }
     });
     document.addEventListener("keydown", event => {
       const target = event.target;
-      if (event.key === "Enter" && target?.classList?.contains("meta-input")) target.blur();
+      if (!target?.classList?.contains("meta-input")) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        target.closest("tr")?.querySelector(".meta-save-button")?.click();
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        state.metaEditKey = "";
+        render();
+      }
     });
     document.getElementById("detailFile").onchange = async event => {
       const file = event.target.files?.[0];
