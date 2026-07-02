@@ -289,7 +289,10 @@
         <div class="actions" style="margin-bottom:10px">
           <label class="file-label" for="detailFile">导入视频明细表</label>
           <input id="detailFile" type="file" accept=".xlsx,.xls,.csv">
+          <label class="file-label" for="metadataFile">导入发布信息表</label>
+          <input id="metadataFile" type="file" accept=".xlsx,.xls,.csv">
           <span class="note" id="importStatus">视频明细表对应 Video Performance List。可以连续导入多天，系统会按日期累计；重复导入同日同素材会覆盖。</span>
+          <span class="note" id="metadataStatus">可选：导入发布信息汇总后，用 VID 优先、ID 兜底补充产品/方向/KOL-KOC/批次。</span>
         </div>
         <div class="filters" id="controls"></div>
         <p class="note">VV 即播放量。点击率优先读取“点击率（视频）”，缺失时按商品点击次数 / VV 计算；转化率优先读取“CTOR（SKU 订单）”，缺失时按 SKU 订单数 / 商品点击次数计算。低 VV 素材默认不参与基准计算。</p>
@@ -393,6 +396,8 @@
     const defaultState = {
       detailRows: [],
       detailFileName: "",
+      metadataRows: [],
+      metadataFileName: "",
       minW: 500,
       recentDays: 7,
       stableMinOrderDays: 1,
@@ -446,6 +451,7 @@
     }
     function normalizeState(next) {
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
+      if (!Array.isArray(next.metadataRows)) next.metadataRows = [];
       ["minW", "recentDays", "stableMinOrderDays", "stableMinDailyOrders", "topLimit"].forEach(key => next[key] = num(next[key], defaultState[key]));
       ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search", "stableVideoKey"].forEach(key => next[key] = String(next[key] || defaultState[key] || ""));
       next.trendValueMetrics = normalizeMetricList(next.trendValueMetrics, next.trendValueMetric, defaultState.trendValueMetrics, valueMetrics);
@@ -563,10 +569,40 @@
     function rowVideoKey(row) {
       return row.videoId || `${row.creator}_${row.title}`;
     }
+    function normalizeLookupId(value) {
+      return String(value || "").trim().replace(/^@+/, "").replace(/\s+/g, "").toLowerCase();
+    }
+    function normalizeLookupVid(value) {
+      const text = String(value || "").trim();
+      if (!text || /^#?\s*n\/?a$/i.test(text)) return "";
+      const digits = text.replace(/\D+/g, "");
+      return digits || text.toLowerCase();
+    }
+    function metadataRowKey(row) {
+      return [row.vid || "", normalizeLookupId(row.idTikTok), row.type || "", row.lot || "", row.product || "", row.direction || ""].join("__");
+    }
+    function mergeMetadataRows(existing, incoming) {
+      const merged = new Map();
+      existing.forEach(row => merged.set(metadataRowKey(row), row));
+      incoming.forEach(row => merged.set(metadataRowKey(row), row));
+      return [...merged.values()].sort((a, b) => String(a.idTikTok || "").localeCompare(String(b.idTikTok || "")) || String(a.vid || "").localeCompare(String(b.vid || "")));
+    }
+    function expandWorksheetRange(sheet) {
+      const cellKeys = Object.keys(sheet).filter(key => /^[A-Z]+[0-9]+$/i.test(key));
+      if (!cellKeys.length) return;
+      const cells = cellKeys.map(key => XLSX.utils.decode_cell(key));
+      const range = {
+        s: { c: Math.min(...cells.map(cell => cell.c)), r: Math.min(...cells.map(cell => cell.r)) },
+        e: { c: Math.max(...cells.map(cell => cell.c)), r: Math.max(...cells.map(cell => cell.r)) }
+      };
+      sheet["!ref"] = XLSX.utils.encode_range(range);
+    }
     function workbookRowsFromBuffer(buffer) {
       const workbook = XLSX.read(buffer, { type: "array", cellDates: true, raw: false });
       const sheetName = workbook.SheetNames[0];
-      const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { header: 1, defval: "", raw: false, blankrows: false });
+      const sheet = workbook.Sheets[sheetName];
+      expandWorksheetRange(sheet);
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false, blankrows: false });
       return { rows, sheetName };
     }
     function findHeaderIndex(rows, requiredAliases) {
@@ -574,6 +610,66 @@
         const normalized = row.map(normalizeHeaderName).filter(Boolean);
         return requiredAliases.every(alias => normalized.some(cell => cell.includes(normalizeHeaderName(alias))));
       });
+    }
+    function parsePublishInfoWorkbook(buffer) {
+      const { rows, sheetName } = workbookRowsFromBuffer(buffer);
+      const headerIndex = rows.findIndex(row => row.map(normalizeHeaderName).some(cell => cell === "vid" || cell.includes("视频id")));
+      if (headerIndex < 0) throw new Error("没有找到发布信息表头，请确认包含 VID、ID TIKTOK、TYPE、LOT、Product、Direction。");
+      const headers = rows[headerIndex];
+      const parsed = rows.slice(headerIndex + 1).map(row => {
+        const record = recordFromRow(headers, row);
+        const idTikTok = String(recordValue(record, ["ID TIKTOK", "TikTok ID", "达人ID", "账号ID", "ID"])).trim();
+        const vidRaw = recordValue(record, ["VID", "Video ID", "视频ID"]);
+        const vid = normalizeLookupVid(vidRaw);
+        if (!idTikTok && !vid) return null;
+        const lotRaw = String(recordValue(record, ["LOT", "批次", "Batch"])).trim();
+        const lot = lotRaw ? (/^lot/i.test(lotRaw) ? lotRaw.toUpperCase() : `LOT${lotRaw}`) : "";
+        return {
+          idTikTok,
+          idKey: normalizeLookupId(idTikTok),
+          vid,
+          type: String(recordValue(record, ["TYPE", "类型", "KOL/KOC"])).trim().toUpperCase(),
+          follower: String(recordValue(record, ["Follower", "粉丝量", "粉丝"])).trim(),
+          lot,
+          product: String(recordValue(record, ["Product", "产品"])).trim(),
+          direction: String(recordValue(record, ["Direction", "方向", "产品方向"])).trim()
+        };
+      }).filter(Boolean);
+      if (!parsed.length) throw new Error("发布信息表没有可导入的数据。");
+      return { rows: parsed, sheetName };
+    }
+    function publishInfoLookup() {
+      const byVid = new Map();
+      const byId = new Map();
+      (state.metadataRows || []).forEach(row => {
+        if (row.vid && !byVid.has(row.vid)) byVid.set(row.vid, row);
+        const key = normalizeLookupId(row.idTikTok || row.idKey);
+        if (key) {
+          if (!byId.has(key)) byId.set(key, []);
+          byId.get(key).push(row);
+        }
+      });
+      return { byVid, byId };
+    }
+    function publishInfoFor(row) {
+      const lookup = publishInfoLookup();
+      const vid = normalizeLookupVid(row.videoId);
+      if (vid && lookup.byVid.has(vid)) return { ...lookup.byVid.get(vid), matchType: "VID" };
+      const candidates = [row.creatorId, row.creator].map(normalizeLookupId).filter(Boolean);
+      for (const id of candidates) {
+        const rows = lookup.byId.get(id) || [];
+        if (rows.length === 1) return { ...rows[0], matchType: "ID" };
+      }
+      return null;
+    }
+    function publishInfoCells(meta) {
+      const empty = `<td class="note">-</td>`;
+      if (!meta) return empty + empty + empty + empty + empty;
+      return `<td>${escapeHtml(meta.product || "-")}</td><td>${escapeHtml(meta.direction || "-")}</td><td>${escapeHtml(meta.type || "-")}</td><td>${escapeHtml(meta.lot || "-")}</td><td>${escapeHtml(meta.follower || "-")}</td>`;
+    }
+    function publishInfoFields(row) {
+      const meta = publishInfoFor(row);
+      return [meta?.product || "", meta?.direction || "", meta?.type || "", meta?.lot || "", meta?.follower || "", meta?.matchType || ""];
     }
     function parseVideoDetailWorkbook(buffer) {
       const { rows, sheetName } = workbookRowsFromBuffer(buffer);
@@ -1107,11 +1203,12 @@
           const orderRatio = result.stableBaseline.avgOrders > 0 ? row.avgOrders / result.stableBaseline.avgOrders : 0;
           return `<tr><td>${videoLabel(row)}</td><td>${row.publishDate || ""}</td><td class="num">${row.ageDays == null ? "" : row.ageDays + 1}</td><td class="num">${money(row.avgOrders)}</td><td class="num ${orderRatio >= 1 ? "good" : "mid"}">${ratio(orderRatio)}x</td><td class="num">${money0.format(row.avgW)}</td><td class="num">${money0.format(row.avgExposure)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td></tr>`;
         }).join("") : `<tr><td colspan="10" class="calc-cell center">当前周期内没有识别到最近新发布素材。</td></tr>`);
-      document.getElementById("topTable").innerHTML = `<tr><th>视频素材</th><th>发布时间</th><th class="num">活跃天</th><th class="num">出单天</th><th class="num">总订单</th><th class="num">日均订单</th><th class="num">总成交件</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th>状态</th></tr>` +
+      document.getElementById("topTable").innerHTML = `<tr><th>视频素材</th><th>产品</th><th>方向</th><th>类型</th><th>批次</th><th>粉丝</th><th>发布时间</th><th class="num">活跃天</th><th class="num">出单天</th><th class="num">总订单</th><th class="num">日均订单</th><th class="num">总成交件</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th>状态</th></tr>` +
         (result.top.length ? result.top.map(row => {
           const stable = result.stable.some(item => item.key === row.key);
-          return `<tr><td>${videoLabel(row)}</td><td>${row.publishDate || ""}</td><td class="num">${row.activeDays}</td><td class="num">${row.orderDays}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.avgOrders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td><td class="${stable ? "good" : "mid"}">${stable ? "稳定出单" : "观察"}</td></tr>`;
-        }).join("") : `<tr><td colspan="14">导入视频明细表后显示。</td></tr>`);
+          const publishInfo = publishInfoFor(row);
+          return `<tr><td>${videoLabel(row)}</td>${publishInfoCells(publishInfo)}<td>${row.publishDate || ""}</td><td class="num">${row.activeDays}</td><td class="num">${row.orderDays}</td><td class="num">${money(row.orders)}</td><td class="num">${money(row.avgOrders)}</td><td class="num">${money(row.salesQty)}</td><td class="num">${money0.format(row.w)}</td><td class="num">${money0.format(row.exposure)}</td><td class="num">${money0.format(row.clicks)}</td><td class="num">${pct(row.ctr)}</td><td class="num">${pct(row.conversion)}</td><td class="num">${money(row.gmv)}</td><td class="${stable ? "good" : "mid"}">${stable ? "稳定出单" : "观察"}</td></tr>`;
+        }).join("") : `<tr><td colspan="19">导入视频明细表后显示。</td></tr>`);
       document.getElementById("trendTable").innerHTML = `<tr><th>日期</th><th class="num">素材数</th><th class="num">订单</th><th class="num">VV/播放量</th><th class="num">商品曝光</th><th class="num">点击</th><th class="num">CTR</th><th class="num">转化率</th><th class="num">GMV</th><th class="num">稳定订单</th><th class="num">稳定VV</th><th class="num">稳定曝光</th><th class="num">稳定CTR</th><th class="num">稳定转化率</th></tr>` +
         (result.trend.length ? result.trend.map(row => `<tr><td>${row.date}</td><td class="num">${row.videos}</td><td class="num">${money(row.all.orders)}</td><td class="num">${money0.format(row.all.w)}</td><td class="num">${money0.format(row.all.exposure)}</td><td class="num">${money0.format(row.all.clicks)}</td><td class="num">${pct(row.allCtr)}</td><td class="num">${pct(row.allConversion)}</td><td class="num">${money(row.all.gmv)}</td><td class="num">${money(row.stable.orders)}</td><td class="num">${money0.format(row.stable.w)}</td><td class="num">${money0.format(row.stable.exposure)}</td><td class="num">${pct(row.stableCtr)}</td><td class="num">${pct(row.stableConversion)}</td></tr>`).join("") : `<tr><td colspan="14">导入视频明细表后显示趋势。</td></tr>`);
       const visibleStableDetails = state.stableVideoKey ? result.stableDetails.filter(row => rowVideoKey(row) === state.stableVideoKey) : result.stableDetails;
@@ -1177,6 +1274,24 @@
         event.target.value = "";
       }
     };
+    document.getElementById("metadataFile").onchange = async event => {
+      const file = event.target.files?.[0];
+      if (!file) return;
+      document.getElementById("metadataStatus").textContent = "正在读取发布信息表...";
+      try {
+        const result = parsePublishInfoWorkbook(await file.arrayBuffer());
+        const before = state.metadataRows.length;
+        state.metadataRows = mergeMetadataRows(state.metadataRows, result.rows);
+        state.metadataFileName = file.name;
+        saveState();
+        render();
+        document.getElementById("metadataStatus").textContent = `发布信息表导入成功：本次 ${result.rows.length} 行，累计 ${state.metadataRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.metadataRows.length)} 行；工作表：${result.sheetName}）。`;
+      } catch (error) {
+        document.getElementById("metadataStatus").textContent = `发布信息表导入失败：${error.message || error}`;
+      } finally {
+        event.target.value = "";
+      }
+    };
     document.getElementById("clearData").onclick = () => {
       if (!confirm("确认清空当前项目的视频素材分析数据？")) return;
       state = structuredClone(defaultState);
@@ -1186,10 +1301,10 @@
     };
     document.getElementById("exportSnapshot").onclick = () => {
       const result = computeAnalysis();
-      const headers = ["类型", "日期/视频ID", "达人", "发布时间", "订单", "成交件", "VV/播放量", "商品曝光", "点击", "CTR", "转化率", "GMV"];
+      const headers = ["类型", "日期/视频ID", "达人", "发布时间", "发布表产品", "发布表方向", "KOL/KOC", "批次", "粉丝", "匹配方式", "订单", "成交件", "VV/播放量", "商品曝光", "点击", "CTR", "转化率", "GMV"];
       const rows = [
-        ...result.trend.map(row => ["每日趋势", row.date, "", "", row.all.orders, row.all.salesQty, row.all.w, row.all.exposure, row.all.clicks, row.allCtr, row.allConversion, row.all.gmv]),
-        ...result.top.map(row => ["Top素材", row.videoId, row.creator, row.publishDate, row.orders, row.salesQty, row.w, row.exposure, row.clicks, row.ctr, row.conversion, row.gmv])
+        ...result.trend.map(row => ["每日趋势", row.date, "", "", "", "", "", "", "", "", row.all.orders, row.all.salesQty, row.all.w, row.all.exposure, row.all.clicks, row.allCtr, row.allConversion, row.all.gmv]),
+        ...result.top.map(row => ["Top素材", row.videoId, row.creator, row.publishDate, ...publishInfoFields(row), row.orders, row.salesQty, row.w, row.exposure, row.clicks, row.ctr, row.conversion, row.gmv])
       ];
       const csv = [headers, ...rows].map(row => row.map(value => `"${String(value ?? "").replaceAll('"', '""')}"`).join(",")).join("\n");
       const a = document.createElement("a");
