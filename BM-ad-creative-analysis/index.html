@@ -419,11 +419,29 @@
     }
     function saveState() {
       state = normalizeState(state);
-      localStorage.setItem(scopedKey(), JSON.stringify(state));
+      const key = scopedKey();
+      const payload = JSON.stringify(state);
+      try {
+        localStorage.setItem(key, payload);
+      } catch (error) {
+        const message = String(error?.message || error || "");
+        if (error?.name === "QuotaExceededError" || /quota|exceeded/i.test(message)) {
+          try {
+            localStorage.removeItem(key);
+            localStorage.setItem(key, payload);
+            return;
+          } catch {
+            throw new Error("浏览器本地缓存空间已满：数据已读取，但这次无法保存。请先点「清空广告数据」清掉旧缓存，或换项目后再导入。");
+          }
+        }
+        throw error;
+      }
     }
     function normalizeState(next) {
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
       if (!Array.isArray(next.metadataRows)) next.metadataRows = [];
+      next.detailRows = next.detailRows.map(compactAdDetailRow);
+      next.metadataRows = next.metadataRows.map(compactMetadataRow);
       if ("minW" in next && !("minSpend" in next)) next.minSpend = next.minW;
       ["minSpend", "recentDays", "stableMinOrderDays", "stableMinDailyOrders", "topLimit"].forEach(key => next[key] = num(next[key], defaultState[key]));
       ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search", "metaProduct", "metaDirection", "metaType", "metaLot", "stableVideoKey"].forEach(key => next[key] = String(next[key] || defaultState[key] || ""));
@@ -437,6 +455,48 @@
       delete next.stableValueMetric;
       delete next.stableRateMetric;
       return next;
+    }
+    function compactText(value, maxLength = 120) {
+      const text = String(value ?? "").trim();
+      return text.length > maxLength ? text.slice(0, maxLength) : text;
+    }
+    function compactAdDetailRow(row) {
+      return {
+        date: compactText(row.date, 10),
+        publishDate: compactText(row.publishDate, 10),
+        creator: compactText(row.creator, 80),
+        creatorId: compactText(row.creatorId, 80),
+        title: compactText(row.title, 180),
+        videoId: compactText(row.videoId, 40),
+        productId: compactText(row.productId, 60),
+        product: compactText(row.product, 140),
+        authStatus: compactText(row.authStatus, 50),
+        tag: compactText(row.tag, 80),
+        source: compactText(row.source, 40),
+        spend: num(row.spend),
+        revenue: num(row.revenue),
+        orders: num(row.orders),
+        avgOrderCost: num(row.avgOrderCost),
+        roi: num(row.roi),
+        exposure: num(row.exposure),
+        clicks: num(row.clicks),
+        ctr: num(row.ctr),
+        conversion: num(row.conversion),
+        play2Rate: num(row.play2Rate),
+        play6Rate: num(row.play6Rate)
+      };
+    }
+    function compactMetadataRow(row) {
+      return {
+        idTikTok: compactText(row.idTikTok, 80),
+        idKey: compactText(row.idKey, 80),
+        vid: compactText(row.vid, 40),
+        type: compactText(row.type, 20),
+        follower: compactText(row.follower, 30),
+        lot: compactText(row.lot, 20),
+        product: compactText(row.product, 80),
+        direction: compactText(row.direction, 80)
+      };
     }
     function normalizeMetricList(value, legacyValue, fallback, metrics) {
       const allowed = new Set(metrics.map(metric => metric.key));
