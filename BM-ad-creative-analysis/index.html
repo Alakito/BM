@@ -256,6 +256,8 @@
           <input id="detailFile" type="file" accept=".xlsx,.xls,.csv">
           <label class="file-label" for="metadataFile">导入发布信息表</label>
           <input id="metadataFile" type="file" accept=".xlsx,.xls,.csv">
+          <button class="primary save-data-action" id="saveDataInline" type="button">保存数据</button>
+          <button class="clear-cache-action" id="clearCacheInline" type="button">清除缓存</button>
           <span class="note" id="importStatus">支持 Creatives video data 表。可以连续导入多天，系统会按文件日期累计；重复导入同日同视频同商品会覆盖。</span>
           <span class="note" id="metadataStatus">可选：导入发布信息汇总后，用 VID 优先、ID 兜底补充产品/方向/KOL-KOC/批次。</span>
         </div>
@@ -460,10 +462,10 @@
       }
     }
     function updateSaveButton() {
-      const button = document.getElementById("saveData");
-      if (!button) return;
-      button.textContent = hasUnsavedChanges ? "保存数据*" : "保存数据";
-      button.title = hasUnsavedChanges ? "当前页面有未保存的数据或设置" : "当前页面数据已保存";
+      document.querySelectorAll("#saveData, #saveDataInline").forEach(button => {
+        button.textContent = hasUnsavedChanges ? "保存数据*" : "保存数据";
+        button.title = hasUnsavedChanges ? "当前页面有未保存的数据或设置" : "当前页面数据已保存";
+      });
     }
     function normalizeState(next) {
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
@@ -1648,15 +1650,15 @@
         event.target.value = "";
       }
     };
-    document.getElementById("saveData").onclick = () => {
+    function handleSaveData() {
       try {
         saveState();
         markSaved("importStatus", `已保存当前广告素材分析数据：明细 ${state.detailRows.length} 行，发布信息 ${state.metadataRows.length} 行。`);
       } catch (error) {
         document.getElementById("importStatus").textContent = `保存失败：${error.message || error}`;
       }
-    };
-    document.getElementById("clearCache").onclick = () => {
+    }
+    function handleClearCache() {
       if (!confirm("确认清除当前项目的广告素材缓存？当前页面已导入的数据会保留，但刷新页面后未保存的数据会消失。")) return;
       try {
         clearSavedState();
@@ -1668,7 +1670,11 @@
       } catch (error) {
         document.getElementById("importStatus").textContent = `清除缓存失败：${error.message || error}`;
       }
-    };
+    }
+    document.getElementById("saveData").onclick = handleSaveData;
+    document.getElementById("saveDataInline").onclick = handleSaveData;
+    document.getElementById("clearCache").onclick = handleClearCache;
+    document.getElementById("clearCacheInline").onclick = handleClearCache;
     document.getElementById("clearData").onclick = () => {
       if (!confirm("确认清空当前项目的广告素材分析数据？")) return;
       state = structuredClone(defaultState);
