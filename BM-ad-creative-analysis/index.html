@@ -361,6 +361,8 @@
     const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
     const money2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const stateKeyBase = "bmAdCreativeAnalysisStateV1";
+    const stateDbName = "bmAdCreativeAnalysisDB";
+    const stateStoreName = "states";
     const defaultState = {
       detailRows: [],
       detailFileName: "",
@@ -404,7 +406,7 @@
       { key: "play2Rate", label: "2秒播放率", picker: row => row.allPlay2Rate, format: pct },
       { key: "play6Rate", label: "6秒播放率", picker: row => row.allPlay6Rate, format: pct }
     ];
-    let state = loadState();
+    let state = structuredClone(defaultState);
     let hasUnsavedChanges = false;
 
     function projectId() {
@@ -422,28 +424,84 @@
         return structuredClone(defaultState);
       }
     }
-    function saveState() {
+    function openStateDb() {
+      return new Promise((resolve, reject) => {
+        if (!window.indexedDB) {
+          reject(new Error("当前浏览器不支持大容量本地数据库 IndexedDB。"));
+          return;
+        }
+        const request = indexedDB.open(stateDbName, 1);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(stateStoreName)) db.createObjectStore(stateStoreName);
+        };
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("打开本地数据库失败。"));
+      });
+    }
+    function readIndexedState(key) {
+      return openStateDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(stateStoreName, "readonly");
+        const request = tx.objectStore(stateStoreName).get(key);
+        request.onsuccess = () => resolve(request.result || null);
+        request.onerror = () => reject(request.error || new Error("读取本地数据库失败。"));
+        tx.oncomplete = () => db.close();
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error || new Error("读取本地数据库失败。"));
+        };
+      }));
+    }
+    function writeIndexedState(key, value) {
+      return openStateDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(stateStoreName, "readwrite");
+        tx.objectStore(stateStoreName).put(value, key);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error || new Error("写入本地数据库失败。"));
+        };
+      }));
+    }
+    function deleteIndexedState(key) {
+      return openStateDb().then(db => new Promise((resolve, reject) => {
+        const tx = db.transaction(stateStoreName, "readwrite");
+        tx.objectStore(stateStoreName).delete(key);
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => {
+          db.close();
+          reject(tx.error || new Error("清除本地数据库失败。"));
+        };
+      })).catch(() => {});
+    }
+    async function loadPersistedState() {
+      try {
+        const indexed = await readIndexedState(scopedKey());
+        if (indexed) return normalizeState({ ...structuredClone(defaultState), ...indexed });
+      } catch {}
+      return loadState();
+    }
+    async function saveState() {
       state = normalizeState(state);
       const key = scopedKey();
-      const payload = JSON.stringify(state);
       try {
-        localStorage.setItem(key, payload);
+        await writeIndexedState(key, state);
+        localStorage.removeItem(key);
       } catch (error) {
-        const message = String(error?.message || error || "");
-        if (error?.name === "QuotaExceededError" || /quota|exceeded/i.test(message)) {
-          try {
-            localStorage.removeItem(key);
-            localStorage.setItem(key, payload);
-            return;
-          } catch {
-            throw new Error("浏览器本地缓存空间已满：数据已读取，但这次无法保存。请先点「清空广告数据」清掉旧缓存，或换项目后再导入。");
-          }
-        }
-        throw error;
+        throw new Error(`浏览器大容量本地数据库写入失败。${error.message || error}`);
       }
     }
-    function clearSavedState() {
-      localStorage.removeItem(scopedKey());
+    async function clearSavedState() {
+      Object.keys(localStorage)
+        .filter(key => key === stateKeyBase || key.startsWith(`${stateKeyBase}_`))
+        .forEach(key => localStorage.removeItem(key));
+      await deleteIndexedState(scopedKey());
     }
     function markUnsaved(statusId, message) {
       hasUnsavedChanges = true;
@@ -1649,18 +1707,18 @@
         event.target.value = "";
       }
     };
-    function handleSaveData() {
+    async function handleSaveData() {
       try {
-        saveState();
+        await saveState();
         markSaved("importStatus", `已保存当前广告素材分析数据：明细 ${state.detailRows.length} 行，发布信息 ${state.metadataRows.length} 行。`);
       } catch (error) {
         document.getElementById("importStatus").textContent = `保存失败：${error.message || error}`;
       }
     }
-    function handleClearCache() {
+    async function handleClearCache() {
       if (!confirm("确认清除当前项目的广告素材缓存？当前页面已导入的数据会保留，但刷新页面后未保存的数据会消失。")) return;
       try {
-        clearSavedState();
+        await clearSavedState();
         hasUnsavedChanges = state.detailRows.length > 0 || state.metadataRows.length > 0;
         updateSaveButton();
         document.getElementById("importStatus").textContent = hasUnsavedChanges
@@ -1674,10 +1732,10 @@
     document.getElementById("saveDataInline").onclick = handleSaveData;
     document.getElementById("clearCache").onclick = handleClearCache;
     document.getElementById("clearCacheInline").onclick = handleClearCache;
-    document.getElementById("clearData").onclick = () => {
+    document.getElementById("clearData").onclick = async () => {
       if (!confirm("确认清空当前项目的广告素材分析数据？")) return;
       state = structuredClone(defaultState);
-      clearSavedState();
+      await clearSavedState();
       hasUnsavedChanges = false;
       render();
       document.getElementById("importStatus").textContent = "已清空广告数据。";
@@ -1696,8 +1754,12 @@
       a.click();
       URL.revokeObjectURL(a.href);
     };
-    render();
-    updateSaveButton();
+    async function initializePage() {
+      state = await loadPersistedState();
+      render();
+      updateSaveButton();
+    }
+    initializePage();
   </script>
 </body>
 </html>
