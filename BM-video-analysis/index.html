@@ -777,10 +777,24 @@
         return requiredAliases.every(alias => normalized.some(cell => cell.includes(normalizeHeaderName(alias))));
       });
     }
+    function findPublishInfoHeaderIndex(rows) {
+      const idAliases = ["ID TIKTOK", "TikTok ID", "达人ID", "账号ID", "ID"];
+      const infoAliases = ["TYPE", "类型", "KOL/KOC", "Product", "产品", "Direction", "方向", "LOT", "批次"];
+      return rows.findIndex(row => {
+        const normalized = row.map(normalizeHeaderName).filter(Boolean);
+        const hasVid = normalized.some(cell => cell === "vid" || cell.includes("视频id"));
+        const hasId = normalized.some(cell => idAliases.some(alias => {
+          const key = normalizeHeaderName(alias);
+          return cell === key || cell.includes(key);
+        }));
+        const hasInfo = normalized.some(cell => infoAliases.some(alias => cell.includes(normalizeHeaderName(alias))));
+        return (hasVid || hasId) && hasInfo;
+      });
+    }
     function parsePublishInfoWorkbook(buffer) {
       const { rows, sheetName } = workbookRowsFromBuffer(buffer);
-      const headerIndex = rows.findIndex(row => row.map(normalizeHeaderName).some(cell => cell === "vid" || cell.includes("视频id")));
-      if (headerIndex < 0) throw new Error("没有找到发布信息表头，请确认包含 VID、ID TIKTOK、TYPE、LOT、Product、Direction。");
+      const headerIndex = findPublishInfoHeaderIndex(rows);
+      if (headerIndex < 0) throw new Error("没有找到发布信息表头，请确认至少包含 ID TIKTOK/TikTok ID 或 VID，并包含 TYPE、Product、Direction、LOT 等信息列。");
       const headers = rows[headerIndex];
       const parsed = rows.slice(headerIndex + 1).map(row => {
         const record = recordFromRow(headers, row);
@@ -826,14 +840,52 @@
       });
       return { byVid, byId };
     }
+    function commonMetadataRow(rows) {
+      const fields = ["product", "direction", "type", "lot", "follower", "idTikTok", "idKey"];
+      const common = {};
+      fields.forEach(field => {
+        const values = [...new Set(rows.map(row => String(row[field] || "").trim()).filter(Boolean))];
+        common[field] = values.length === 1 ? values[0] : "";
+      });
+      common.idKey = normalizeLookupId(common.idTikTok || common.idKey || rows[0]?.idTikTok || rows[0]?.idKey);
+      common.vid = "";
+      return common;
+    }
+    function bestIdMetadataRow(rows, currentVid = "") {
+      const candidates = (rows || []).filter(Boolean);
+      if (!candidates.length) return null;
+      const vid = normalizeLookupVid(currentVid);
+      if (vid) {
+        const exactVidRows = candidates.filter(row => normalizeLookupVid(row.vid) === vid);
+        if (exactVidRows.length) return exactVidRows.reduce((best, row) => betterMetadataRow(best, row), null);
+      }
+      const idOnlyRows = candidates.filter(row => !normalizeLookupVid(row.vid));
+      if (idOnlyRows.length === 1) return idOnlyRows[0];
+      if (idOnlyRows.length > 1) return commonMetadataRow(idOnlyRows);
+      if (candidates.length === 1) return candidates[0];
+      return commonMetadataRow(candidates);
+    }
+    function mergeMetadataForMatch(primary, fallback, matchType) {
+      const merged = { ...(primary || {}) };
+      ["product", "direction", "type", "lot", "follower", "idTikTok", "idKey"].forEach(field => {
+        if (!String(merged[field] || "").trim() && fallback?.[field]) merged[field] = fallback[field];
+      });
+      merged.matchType = matchType;
+      return merged;
+    }
     function publishInfoFor(row, lookup = publishInfoLookup()) {
       const vid = normalizeLookupVid(row.videoId);
-      if (vid && lookup.byVid.has(vid)) return { ...lookup.byVid.get(vid), matchType: "VID" };
+      const vidMatch = vid && lookup.byVid.has(vid) ? lookup.byVid.get(vid) : null;
       const candidates = [row.creatorId, row.creator].map(normalizeLookupId).filter(Boolean);
+      let idMatch = null;
       for (const id of candidates) {
         const rows = lookup.byId.get(id) || [];
-        if (rows.length === 1) return { ...rows[0], matchType: "ID" };
+        idMatch = bestIdMetadataRow(rows, vid);
+        if (idMatch) break;
       }
+      if (vidMatch && idMatch) return mergeMetadataForMatch({ ...vidMatch }, idMatch, "VID+ID");
+      if (vidMatch) return { ...vidMatch, matchType: "VID" };
+      if (idMatch) return { ...idMatch, matchType: "ID" };
       return null;
     }
     function normalizeEditableMetadataValue(field, value) {
