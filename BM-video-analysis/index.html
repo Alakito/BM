@@ -362,6 +362,8 @@
       <button type="button" data-analysis-tab="overview">总览</button>
       <button type="button" data-analysis-tab="ctr">CTR变化归因</button>
       <button type="button" data-analysis-tab="conversion">转化率变化归因</button>
+      <button type="button" data-analysis-tab="gmv">GMV变化归因</button>
+      <button type="button" data-analysis-tab="exposure">商品曝光变化归因</button>
     </div>
 
     <div id="overviewPage" class="analysis-page">
@@ -504,6 +506,50 @@
         </div>
       </section>
     </div>
+
+    <div id="gmvAttributionPage" class="analysis-page" hidden>
+      <section class="panel" style="margin-top:18px">
+        <h2>GMV变化归因总览</h2>
+        <div class="panel-body">
+          <p class="note">GMV按周期内明细记录直接求和；变化量 = 对比期 GMV - 基期 GMV，变化率 = 变化量 / 基期 GMV。</p>
+          <div class="scroll compact-scroll"><table id="gmvAttributionOverview"></table></div>
+          <div class="analysis-box" id="gmvAttributionSummary"></div>
+        </div>
+      </section>
+      <section class="panel" style="margin-top:12px">
+        <h2>GMV维度拆解</h2>
+        <div class="panel-body">
+          <div class="filters" style="margin-bottom:10px">
+            <label>拆解维度<select id="gmvAttributionDimension"></select></label>
+            <button type="button" class="primary" id="exportGmvAttribution">导出计算明细</button>
+          </div>
+          <div class="scroll"><table id="gmvAttributionTable"></table></div>
+          <div class="analysis-box" id="gmvDimensionSummary"></div>
+        </div>
+      </section>
+    </div>
+
+    <div id="exposureAttributionPage" class="analysis-page" hidden>
+      <section class="panel" style="margin-top:18px">
+        <h2>商品曝光变化归因总览</h2>
+        <div class="panel-body">
+          <p class="note">商品曝光按周期内明细记录直接求和；变化量 = 对比期商品曝光 - 基期商品曝光，变化率 = 变化量 / 基期商品曝光。</p>
+          <div class="scroll compact-scroll"><table id="exposureAttributionOverview"></table></div>
+          <div class="analysis-box" id="exposureAttributionSummary"></div>
+        </div>
+      </section>
+      <section class="panel" style="margin-top:12px">
+        <h2>商品曝光维度拆解</h2>
+        <div class="panel-body">
+          <div class="filters" style="margin-bottom:10px">
+            <label>拆解维度<select id="exposureAttributionDimension"></select></label>
+            <button type="button" class="primary" id="exportExposureAttribution">导出计算明细</button>
+          </div>
+          <div class="scroll"><table id="exposureAttributionTable"></table></div>
+          <div class="analysis-box" id="exposureDimensionSummary"></div>
+        </div>
+      </section>
+    </div>
   </main>
 
   <script src="../BM-profit-calculator/xlsx-js-style.min.js"></script>
@@ -535,6 +581,8 @@
       analysisTab: "overview",
       ctrAttributionDimension: "direction",
       conversionAttributionDimension: "direction",
+      gmvAttributionDimension: "direction",
+      exposureAttributionDimension: "direction",
       trendValueMetrics: ["orders"],
       trendRateMetrics: ["ctr"],
       stableVideoKey: "",
@@ -590,10 +638,12 @@
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
       if (!Array.isArray(next.metadataRows)) next.metadataRows = [];
       ["minW", "recentDays", "stableMinOrderDays", "stableMinDailyOrders", "topLimit"].forEach(key => next[key] = num(next[key], defaultState[key]));
-      ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search", "metaProduct", "metaDirection", "metaType", "metaLot", "stableVideoKey", "analysisTab", "ctrAttributionDimension", "conversionAttributionDimension"].forEach(key => next[key] = String(next[key] || defaultState[key] || ""));
-      if (!["overview", "ctr", "conversion"].includes(next.analysisTab)) next.analysisTab = "overview";
+      ["analysisStart", "analysisEnd", "baseStart", "baseEnd", "compareStart", "compareEnd", "search", "metaProduct", "metaDirection", "metaType", "metaLot", "stableVideoKey", "analysisTab", "ctrAttributionDimension", "conversionAttributionDimension", "gmvAttributionDimension", "exposureAttributionDimension"].forEach(key => next[key] = String(next[key] || defaultState[key] || ""));
+      if (!["overview", "ctr", "conversion", "gmv", "exposure"].includes(next.analysisTab)) next.analysisTab = "overview";
       if (!attributionDimensions.some(item => item.key === next.ctrAttributionDimension)) next.ctrAttributionDimension = "direction";
       if (!attributionDimensions.some(item => item.key === next.conversionAttributionDimension)) next.conversionAttributionDimension = "direction";
+      if (!attributionDimensions.some(item => item.key === next.gmvAttributionDimension)) next.gmvAttributionDimension = "direction";
+      if (!attributionDimensions.some(item => item.key === next.exposureAttributionDimension)) next.exposureAttributionDimension = "direction";
       next.trendValueMetrics = normalizeMetricList(next.trendValueMetrics, next.trendValueMetric, defaultState.trendValueMetrics, valueMetrics);
       next.trendRateMetrics = normalizeMetricList(next.trendRateMetrics, next.trendRateMetric, defaultState.trendRateMetrics, rateMetrics);
       next.stableValueMetrics = normalizeMetricList(next.stableValueMetrics, next.stableValueMetric, defaultState.stableValueMetrics, valueMetrics);
@@ -1372,6 +1422,208 @@
       const date = new Date().toISOString().slice(0, 10);
       XLSX.writeFile(workbook, `视频素材-${data.metric.label}-${data.dimension.label}-计算明细-${date}.xlsx`);
     }
+    function volumeAttributionMetric(metricKey) {
+      if (metricKey === "exposure") {
+        return {
+          key: "exposure",
+          label: "商品曝光",
+          accessor: row => num(row.exposure),
+          format: value => money0.format(num(value)),
+          nextAction: "优先检查发布量、素材供给、分发覆盖和低曝光素材占比。"
+        };
+      }
+      return {
+        key: "gmv",
+        label: "GMV",
+        accessor: row => num(row.gmv),
+        format: money,
+        nextAction: "优先拆查订单量、转化率、客单价和高贡献素材是否缩量。"
+      };
+    }
+    function volumeTotals(rows, metric) {
+      const videoIds = new Set();
+      const dates = new Set();
+      const total = rows.reduce((sum, row) => {
+        videoIds.add(rowVideoKey(row));
+        if (row.date) dates.add(row.date);
+        return sum + metric.accessor(row);
+      }, 0);
+      return { total, videos: videoIds.size, activeDays: dates.size };
+    }
+    function volumeAttributionOverviewRows(result, metricKey) {
+      const metric = volumeAttributionMetric(metricKey);
+      const { baseRows, compareRows } = attributionPeriodRows(result);
+      const lookup = publishInfoLookup();
+      const same = sameVideoRows(baseRows, compareRows);
+      const baseIds = new Set(baseRows.map(rowVideoKey));
+      const compareIds = new Set(compareRows.map(rowVideoKey));
+      const newCompare = compareRows.filter(row => !baseIds.has(rowVideoKey(row)));
+      const exitedBase = baseRows.filter(row => !compareIds.has(rowVideoKey(row)));
+      const definitions = [
+        { label: "全部有效素材", baseRows, compareRows, note: "当前筛选口径内所有有效视频" },
+        { label: "已匹配发布信息素材", baseRows: baseRows.filter(row => publishInfoFor(row, lookup)), compareRows: compareRows.filter(row => publishInfoFor(row, lookup)), note: "能匹配到产品/方向/类型/批次的素材" },
+        { label: "同视频集合", baseRows: same.base, compareRows: same.compare, note: "基期和对比期都出现的视频，用于观察存量素材变化" },
+        { label: "对比期新素材", baseRows: [], compareRows: newCompare, note: "对比期中新出现素材带来的新增贡献" },
+        { label: "基期退出素材", baseRows: exitedBase, compareRows: [], note: "基期存在但对比期未出现素材形成的减少" }
+      ];
+      const overallCompare = volumeTotals(compareRows, metric).total;
+      return definitions.map(item => {
+        const base = volumeTotals(item.baseRows, metric);
+        const compare = volumeTotals(item.compareRows, metric);
+        const delta = compare.total - base.total;
+        return {
+          ...item,
+          base,
+          compare,
+          delta,
+          deltaRate: base.total > 0 ? delta / base.total : null,
+          compareShare: overallCompare > 0 ? compare.total / overallCompare : 0
+        };
+      });
+    }
+    function buildVolumeAttributionRows(result, metricKey, dimensionKey) {
+      const metric = volumeAttributionMetric(metricKey);
+      const { baseRows, compareRows } = attributionPeriodRows(result);
+      const lookup = publishInfoLookup();
+      const grouped = new Map();
+      const touch = key => {
+        if (!grouped.has(key)) grouped.set(key, { label: key, baseRows: [], compareRows: [] });
+        return grouped.get(key);
+      };
+      baseRows.forEach(row => touch(attributionGroupKey(row, lookup, dimensionKey)).baseRows.push(row));
+      compareRows.forEach(row => touch(attributionGroupKey(row, lookup, dimensionKey)).compareRows.push(row));
+      const overallBase = volumeTotals(baseRows, metric).total;
+      const overallCompare = volumeTotals(compareRows, metric).total;
+      const overallDelta = overallCompare - overallBase;
+      const rows = [...grouped.values()].map(item => {
+        const base = volumeTotals(item.baseRows, metric);
+        const compare = volumeTotals(item.compareRows, metric);
+        const delta = compare.total - base.total;
+        return {
+          ...item,
+          base,
+          compare,
+          delta,
+          deltaRate: base.total > 0 ? delta / base.total : null,
+          compareShare: overallCompare > 0 ? compare.total / overallCompare : 0,
+          changeContribution: overallDelta !== 0 ? delta / overallDelta : 0
+        };
+      });
+      const declineCut = percentile(rows.map(row => Math.max(0, -row.delta)), .8);
+      const growthCut = percentile(rows.map(row => Math.max(0, row.delta)), .8);
+      rows.forEach(row => {
+        if (row.delta < 0) row.status = Math.abs(row.delta) >= declineCut && declineCut > 0 ? "主要下滑项" : "下滑";
+        else if (row.delta > 0) row.status = row.delta >= growthCut && growthCut > 0 ? "主要增长项" : "增长";
+        else row.status = "持平";
+        if (row.delta < 0) row.action = metric.nextAction;
+        else if (row.delta > 0) row.action = "复盘对应素材、达人和内容结构，评估是否可以继续放大。";
+        else row.action = "当前贡献基本持平，保持观察。";
+      });
+      return rows.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta) || b.compare.total - a.compare.total);
+    }
+    function volumeDeltaRateText(row) {
+      if (row.deltaRate == null) return row.compare.total > 0 ? "新增" : "-";
+      return `${row.deltaRate > 0 ? "+" : ""}${pct(row.deltaRate)}`;
+    }
+    function renderVolumeOverviewTable(id, rows, metricKey) {
+      const metric = volumeAttributionMetric(metricKey);
+      document.getElementById(id).innerHTML = `<tr><th>口径</th><th class="num">基期素材</th><th class="num">基期${metric.label}</th><th class="num">对比期素材</th><th class="num">对比期${metric.label}</th><th class="num">变化量</th><th class="num">变化率</th><th class="num">占对比期</th><th>说明</th></tr>` +
+        rows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td class="num">${row.base.videos}</td><td class="num">${metric.format(row.base.total)}</td><td class="num">${row.compare.videos}</td><td class="num">${metric.format(row.compare.total)}</td><td class="num ${row.delta < 0 ? "bad" : row.delta > 0 ? "good" : ""}">${row.delta > 0 ? "+" : ""}${metric.format(row.delta)}</td><td class="num ${row.delta < 0 ? "bad" : row.delta > 0 ? "good" : ""}">${volumeDeltaRateText(row)}</td><td class="num">${pct(row.compareShare)}</td><td>${escapeHtml(row.note)}</td></tr>`).join("");
+    }
+    function renderVolumeAttributionTable(id, rows, metricKey) {
+      const metric = volumeAttributionMetric(metricKey);
+      document.getElementById(id).innerHTML = `<tr><th>维度值</th><th class="num">基期素材</th><th class="num">基期${metric.label}</th><th class="num">对比期素材</th><th class="num">对比期${metric.label}</th><th class="num">变化量</th><th class="num">变化率</th><th class="num">占对比期</th><th class="num">整体变化贡献</th><th>判断</th><th>建议动作</th></tr>` +
+        (rows.length ? rows.slice(0, 80).map(row => `<tr><td>${escapeHtml(row.label)}</td><td class="num">${row.base.videos}</td><td class="num">${metric.format(row.base.total)}</td><td class="num">${row.compare.videos}</td><td class="num">${metric.format(row.compare.total)}</td><td class="num ${row.delta < 0 ? "bad" : row.delta > 0 ? "good" : ""}">${row.delta > 0 ? "+" : ""}${metric.format(row.delta)}</td><td class="num">${volumeDeltaRateText(row)}</td><td class="num">${pct(row.compareShare)}</td><td class="num">${pct(row.changeContribution)}</td><td class="${row.delta < 0 ? "bad" : row.delta > 0 ? "good" : "mid"}">${row.status}</td><td>${escapeHtml(row.action)}</td></tr>`).join("") : `<tr><td colspan="11">设置基期和对比期后显示。</td></tr>`);
+    }
+    function renderVolumeSummary(targetId, overviewRows, dimensionRows, metricKey, dimensionName) {
+      const metric = volumeAttributionMetric(metricKey);
+      const overall = overviewRows.find(row => row.label === "全部有效素材");
+      const matched = overviewRows.find(row => row.label === "已匹配发布信息素材");
+      if (!overall) {
+        document.getElementById(targetId).innerHTML = analysisHtml([]);
+        return;
+      }
+      const biggestDecline = [...dimensionRows].filter(row => row.delta < 0).sort((a, b) => a.delta - b.delta)[0];
+      const biggestGrowth = [...dimensionRows].filter(row => row.delta > 0).sort((a, b) => b.delta - a.delta)[0];
+      document.getElementById(targetId).innerHTML = analysisHtml([
+        `判断：整体${metric.label}从 ${metric.format(overall.base.total)} 变为 ${metric.format(overall.compare.total)}，${overall.delta >= 0 ? "增加" : "减少"} ${metric.format(Math.abs(overall.delta))}（${volumeDeltaRateText(overall)}）。`,
+        biggestDecline ? `主要拖累：${dimensionName}中的 ${biggestDecline.label} 减少 ${metric.format(Math.abs(biggestDecline.delta))}，是当前最大下滑项。` : `主要拖累：${dimensionName}维度暂未出现减少项。`,
+        biggestGrowth ? `增长来源：${biggestGrowth.label} 增加 ${metric.format(biggestGrowth.delta)}，占对比期${metric.label} ${pct(biggestGrowth.compareShare)}。` : `增长来源：${dimensionName}维度暂未出现增长项。`,
+        matched ? `归因覆盖：已匹配发布信息的素材覆盖对比期${metric.label} ${pct(matched.compareShare)}；覆盖越高，产品和方向归因越可靠。` : "归因覆盖：暂无已匹配发布信息素材。",
+        `下一步：${biggestDecline ? biggestDecline.action : biggestGrowth ? biggestGrowth.action : metric.nextAction}`
+      ]);
+    }
+    function volumeAttributionExportRows(result, metricKey, dimensionKey) {
+      const metric = volumeAttributionMetric(metricKey);
+      const dimension = attributionDimension(dimensionKey);
+      const lookup = publishInfoLookup();
+      const grouped = buildVolumeAttributionRows(result, metricKey, dimensionKey);
+      const { baseRows, compareRows } = attributionPeriodRows(result);
+      const summaryHeaders = ["指标", "拆解维度", "维度值", "基期素材数", `基期${metric.label}`, "对比期素材数", `对比期${metric.label}`, "变化量", "变化率", "占对比期", "整体变化贡献", "判断", "建议动作"];
+      const summaryRows = grouped.map(row => [metric.label, dimension.label, row.label, row.base.videos, row.base.total, row.compare.videos, row.compare.total, row.delta, row.deltaRate, row.compareShare, row.changeContribution, row.status, row.action]);
+      const detailHeaders = ["期间", "日期", "视频ID", "视频标题", "达人", "产品", "方向", "类型", "批次", "粉丝", "匹配方式", "拆解维度", "维度值", metric.label, "VV/播放量", "商品曝光", "点击", "订单", "成交件", "GMV"];
+      const detailRows = [];
+      const appendDetail = (period, rows) => rows.forEach(row => {
+        const meta = publishInfoFor(row, lookup);
+        detailRows.push([
+          period, row.date || "", row.videoId || "", row.title || "", row.creator || meta?.idTikTok || "",
+          meta?.product || "", meta?.direction || "", meta?.type || "", meta?.lot || "", meta?.follower || "", meta?.matchType || "",
+          dimension.label, attributionGroupKey(row, lookup, dimensionKey), metric.accessor(row),
+          num(row.w), num(row.exposure), num(row.clicks), num(row.orders), num(row.salesQty), num(row.gmv)
+        ]);
+      });
+      appendDetail("基期", baseRows);
+      appendDetail("对比期", compareRows);
+      const formulaRows = [
+        ["项目", "当前口径/公式"],
+        ["导出指标", metric.label],
+        ["拆解维度", dimension.label],
+        ["基期", `${state.baseStart || "最早"} ~ ${state.baseEnd || "最新"}`],
+        ["对比期", `${state.compareStart || "最早"} ~ ${state.compareEnd || "最新"}`],
+        ["素材过滤", `仅纳入当前页面筛选结果；VV/播放量 >= ${num(state.minW, 500)}，并应用搜索、产品、方向、类型、批次筛选。`],
+        ["聚合口径", `${metric.label} = 维度内全部视频日明细的${metric.label}直接求和。`],
+        ["变化量", `对比期${metric.label} - 基期${metric.label}。`],
+        ["变化率", `变化量 / 基期${metric.label}；基期为 0 时显示“新增”。`],
+        ["占对比期", `维度对比期${metric.label} / 全部有效素材对比期${metric.label}。`],
+        ["整体变化贡献", `维度变化量 / 全部有效素材整体变化量；正负方向互相抵消时可能超过 100%。`],
+        ["明细粒度", "“纳入计算明细”每一行对应一条视频日维度记录，并标明期间和归属维度。"]
+      ];
+      return { metric, dimension, summaryHeaders, summaryRows, detailHeaders, detailRows, formulaRows };
+    }
+    function exportVolumeAttributionWorkbook(metricKey) {
+      if (!attributionReady()) {
+        alert("请先设置基期和对比期，再导出计算明细。");
+        return;
+      }
+      const result = computeAnalysis();
+      const dimensionKey = metricKey === "exposure" ? state.exposureAttributionDimension : state.gmvAttributionDimension;
+      const data = volumeAttributionExportRows(result, metricKey, dimensionKey);
+      if (!data.detailRows.length) {
+        alert("当前基期和对比期没有可导出的计算明细。");
+        return;
+      }
+      const workbook = XLSX.utils.book_new();
+      const formulaSheet = XLSX.utils.aoa_to_sheet(data.formulaRows);
+      formulaSheet["!cols"] = [{ wch: 20 }, { wch: 100 }];
+      styleAttributionSheet(formulaSheet);
+      XLSX.utils.book_append_sheet(workbook, formulaSheet, "计算口径");
+
+      const summarySheet = XLSX.utils.aoa_to_sheet([data.summaryHeaders, ...data.summaryRows]);
+      summarySheet["!cols"] = data.summaryHeaders.map((header, index) => ({ wch: index === 2 || index >= 11 ? 28 : Math.max(12, String(header).length * 2) }));
+      styleAttributionSheet(summarySheet);
+      const summaryRange = XLSX.utils.decode_range(summarySheet["!ref"]);
+      for (let row = 1; row <= summaryRange.e.r; row += 1) {
+        [8, 9, 10].forEach(col => { const cell = summarySheet[XLSX.utils.encode_cell({ r: row, c: col })]; if (cell) cell.z = "0.00%"; });
+      }
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "维度汇总");
+
+      const detailSheet = XLSX.utils.aoa_to_sheet([data.detailHeaders, ...data.detailRows]);
+      detailSheet["!cols"] = data.detailHeaders.map((header, index) => ({ wch: [2, 3].includes(index) ? 36 : [4, 5, 6, 7, 8, 10, 12].includes(index) ? 18 : Math.max(12, String(header).length * 2) }));
+      styleAttributionSheet(detailSheet);
+      XLSX.utils.book_append_sheet(workbook, detailSheet, "纳入计算明细");
+      const date = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(workbook, `视频素材-${data.metric.label}-${data.dimension.label}-变化明细-${date}.xlsx`);
+    }
     function renderAttributionSummary(targetId, rows, metricKey, dimensionName = "维度") {
       const metric = attributionMetric(metricKey);
       if (!attributionReady() || !rows.length) {
@@ -1412,7 +1664,9 @@
       const pages = {
         overview: "overviewPage",
         ctr: "ctrAttributionPage",
-        conversion: "conversionAttributionPage"
+        conversion: "conversionAttributionPage",
+        gmv: "gmvAttributionPage",
+        exposure: "exposureAttributionPage"
       };
       Object.entries(pages).forEach(([key, id]) => {
         const el = document.getElementById(id);
@@ -1423,16 +1677,20 @@
       });
       const ctrSelect = document.getElementById("ctrAttributionDimension");
       const conversionSelect = document.getElementById("conversionAttributionDimension");
+      const gmvSelect = document.getElementById("gmvAttributionDimension");
+      const exposureSelect = document.getElementById("exposureAttributionDimension");
       if (ctrSelect) ctrSelect.innerHTML = attributionOptions(state.ctrAttributionDimension);
       if (conversionSelect) conversionSelect.innerHTML = attributionOptions(state.conversionAttributionDimension);
+      if (gmvSelect) gmvSelect.innerHTML = attributionOptions(state.gmvAttributionDimension);
+      if (exposureSelect) exposureSelect.innerHTML = attributionOptions(state.exposureAttributionDimension);
       if (!attributionReady()) {
-        ["ctrAttributionOverview", "conversionAttributionOverview", "ctrAttributionTable", "conversionAttributionTable", "ctrDirectionTable"].forEach(id => {
+        ["ctrAttributionOverview", "conversionAttributionOverview", "ctrAttributionTable", "conversionAttributionTable", "ctrDirectionTable", "gmvAttributionOverview", "gmvAttributionTable", "exposureAttributionOverview", "exposureAttributionTable"].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.innerHTML = `<tr><td>设置基期和对比期后显示。</td></tr>`;
         });
-        ["ctrAttributionSummary", "ctrDimensionSummary", "ctrDirectionSummary", "conversionAttributionSummary", "conversionDimensionSummary"].forEach(id => {
+        ["ctrAttributionSummary", "ctrDimensionSummary", "ctrDirectionSummary", "conversionAttributionSummary", "conversionDimensionSummary", "gmvAttributionSummary", "gmvDimensionSummary", "exposureAttributionSummary", "exposureDimensionSummary"].forEach(id => {
           const el = document.getElementById(id);
-          if (el) el.innerHTML = analysisHtml(["先选择基期和对比期，归因页会自动按加权口径拆解变化。"]);
+          if (el) el.innerHTML = analysisHtml(["先选择基期和对比期，归因页会自动按当前指标口径拆解变化。"]);
         });
         return;
       }
@@ -1452,6 +1710,20 @@
       renderAttributionTable("conversionAttributionTable", conversionRows, "conversion");
       renderOverviewSummary("conversionAttributionSummary", conversionOverview, "conversion");
       renderAttributionSummary("conversionDimensionSummary", conversionRows, "conversion", attributionDimension(state.conversionAttributionDimension).label);
+
+      const gmvOverview = volumeAttributionOverviewRows(result, "gmv");
+      const gmvRows = buildVolumeAttributionRows(result, "gmv", state.gmvAttributionDimension);
+      renderVolumeOverviewTable("gmvAttributionOverview", gmvOverview, "gmv");
+      renderVolumeAttributionTable("gmvAttributionTable", gmvRows, "gmv");
+      renderVolumeSummary("gmvAttributionSummary", gmvOverview, gmvRows, "gmv", attributionDimension(state.gmvAttributionDimension).label);
+      renderVolumeSummary("gmvDimensionSummary", gmvOverview, gmvRows, "gmv", attributionDimension(state.gmvAttributionDimension).label);
+
+      const exposureOverview = volumeAttributionOverviewRows(result, "exposure");
+      const exposureRows = buildVolumeAttributionRows(result, "exposure", state.exposureAttributionDimension);
+      renderVolumeOverviewTable("exposureAttributionOverview", exposureOverview, "exposure");
+      renderVolumeAttributionTable("exposureAttributionTable", exposureRows, "exposure");
+      renderVolumeSummary("exposureAttributionSummary", exposureOverview, exposureRows, "exposure", attributionDimension(state.exposureAttributionDimension).label);
+      renderVolumeSummary("exposureDimensionSummary", exposureOverview, exposureRows, "exposure", attributionDimension(state.exposureAttributionDimension).label);
     }
     function periodRangeText(summary) {
       if (!summary.start && !summary.end) return "未设置";
@@ -1995,7 +2267,9 @@
         ["stableOrderDays", "stableMinOrderDays"], ["stableDailyOrders", "stableMinDailyOrders"], ["topLimit", "topLimit"],
         ["stableVideoFilter", "stableVideoKey", "text"],
         ["ctrAttributionDimension", "ctrAttributionDimension", "text"],
-        ["conversionAttributionDimension", "conversionAttributionDimension", "text"]
+        ["conversionAttributionDimension", "conversionAttributionDimension", "text"],
+        ["gmvAttributionDimension", "gmvAttributionDimension", "text"],
+        ["exposureAttributionDimension", "exposureAttributionDimension", "text"]
       ].forEach(([id, key, type]) => {
         const el = document.getElementById(id);
         if (!el) return;
@@ -2100,6 +2374,8 @@
     };
     document.getElementById("exportCtrAttribution").onclick = () => exportAttributionWorkbook("ctr");
     document.getElementById("exportConversionAttribution").onclick = () => exportAttributionWorkbook("conversion");
+    document.getElementById("exportGmvAttribution").onclick = () => exportVolumeAttributionWorkbook("gmv");
+    document.getElementById("exportExposureAttribution").onclick = () => exportVolumeAttributionWorkbook("exposure");
     document.getElementById("exportSnapshot").onclick = () => {
       const result = computeAnalysis();
       const headers = ["类型", "日期/视频ID", "达人", "发布时间", "发布表产品", "发布表方向", "KOL/KOC", "批次", "粉丝", "匹配方式", "订单", "成交件", "VV/播放量", "商品曝光", "点击", "CTR", "转化率", "GMV"];
