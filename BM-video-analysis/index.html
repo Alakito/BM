@@ -148,6 +148,17 @@
       font-size: 20px;
       font-weight: 900;
     }
+    .panel-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+    .panel-heading h2 { padding: 0; border: 0; }
+    button.module-export-button { padding: 7px 11px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
     .panel-body { padding: 16px; }
     .note { color: var(--muted); font-size: 13px; line-height: 1.55; }
     .analysis-box {
@@ -354,7 +365,7 @@
           <span class="note" id="metadataStatus">可选：导入发布信息汇总后，用 VID 优先、ID 兜底补充产品/方向/KOL-KOC/批次。</span>
         </div>
         <div class="filters" id="controls"></div>
-        <p class="note">VV 即播放量。点击率优先读取“点击率（视频）”，缺失时按商品点击次数 / VV 计算；转化率优先读取“CTOR（SKU 订单）”，缺失时按 SKU 订单数 / 商品点击次数计算。低 VV 素材默认不参与基准计算。</p>
+        <p class="note">VV 即播放量。模块汇总统一按 点击合计 / VV合计 计算 CTR，按 SKU订单合计 / 点击合计 计算转化率；源表率字段仅保留在导出明细中供核对。低 VV 素材默认不参与基准计算。</p>
       </div>
     </section>
 
@@ -370,7 +381,7 @@
     <div class="kpis" id="kpis"></div>
 
     <section class="panel">
-      <h2>基期 vs 对比期</h2>
+      <div class="panel-heading"><h2>基期 vs 对比期</h2><button class="module-export-button" data-export-video-module="period" type="button">导出计算</button></div>
       <div class="panel-body">
         <div class="scroll compact-scroll"><table id="periodCompareTable"></table></div>
         <div class="analysis-box" id="periodCompareAnalysis"></div>
@@ -378,13 +389,13 @@
     </section>
 
     <section class="panel">
-      <h2>每日视频表现日历</h2>
+      <div class="panel-heading"><h2>每日视频表现日历</h2><button class="module-export-button" data-export-video-module="calendar" type="button">导出计算</button></div>
       <div class="panel-body">
         <div class="calendar-grid" id="calendar"></div>
         <div class="formula-strip">
           <div class="formula-item"><b>稳单</b>当天属于“稳定出单素材”的 SKU 订单数合计；稳定素材由下方“稳定出单天数”和“稳定日均订单”阈值共同判断。</div>
-          <div class="formula-item"><b>CTR</b>优先读取表格“点击率（视频）”；缺失时按 商品点击次数 / VV 播放量 计算。</div>
-          <div class="formula-item"><b>转化</b>优先读取表格“CTOR（SKU 订单）”；缺失时按 SKU 订单数 / 商品点击次数 计算。</div>
+          <div class="formula-item"><b>CTR</b>按 商品点击次数合计 / VV播放量合计 计算。</div>
+          <div class="formula-item"><b>转化</b>按 SKU订单数合计 / 商品点击次数合计 计算。</div>
         </div>
         <div class="analysis-box" id="calendarAnalysis"></div>
       </div>
@@ -392,14 +403,14 @@
 
     <div class="grid two" style="margin-top:12px">
       <section class="panel">
-        <h2>总体基准 vs 稳定出单基准</h2>
+        <div class="panel-heading"><h2>总体基准 vs 稳定出单基准</h2><button class="module-export-button" data-export-video-module="baseline" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="scroll compact-scroll"><table id="baselineTable"></table></div>
           <div class="analysis-box" id="baselineAnalysis"></div>
         </div>
       </section>
       <section class="panel">
-        <h2>最近新发布素材表现</h2>
+        <div class="panel-heading"><h2>最近新发布素材表现</h2><button class="module-export-button" data-export-video-module="recent" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="scroll compact-scroll"><table id="recentTable"></table></div>
           <div class="analysis-box" id="recentAnalysis"></div>
@@ -408,7 +419,7 @@
     </div>
 
     <section class="panel" style="margin-top:12px">
-      <h2>周期内销量好的视频素材</h2>
+      <div class="panel-heading"><h2>周期内销量好的视频素材</h2><button class="module-export-button" data-export-video-module="top" type="button">导出计算</button></div>
       <div class="panel-body">
         <div class="scroll"><table id="topTable"></table></div>
         <div class="analysis-box" id="topAnalysis"></div>
@@ -417,7 +428,7 @@
 
     <div class="grid two" style="margin-top:12px">
       <section class="panel">
-        <h2>周期趋势变化</h2>
+        <div class="panel-heading"><h2>周期趋势变化</h2><button class="module-export-button" data-export-video-module="trend" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="chart-tools">
             <div class="metric-group">
@@ -435,7 +446,7 @@
         </div>
       </section>
       <section class="panel">
-        <h2>稳定出单视频变化详情</h2>
+        <div class="panel-heading"><h2>稳定出单视频变化详情</h2><button class="module-export-button" data-export-video-module="stable" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="chart-tools">
             <label class="wide">稳定素材筛选<select id="stableVideoFilter"></select></label>
@@ -458,7 +469,7 @@
 
     <div id="ctrAttributionPage" class="analysis-page" hidden>
       <section class="panel" style="margin-top:18px">
-        <h2>CTR变化归因总览</h2>
+        <div class="panel-heading"><h2>CTR变化归因总览</h2><button class="module-export-button" data-export-video-attribution="ctr" type="button">导出计算</button></div>
         <div class="panel-body">
           <p class="note">CTR 使用加权口径：商品点击 / VV播放量，不直接平均单条视频 CTR。请先设置基期和对比期。</p>
           <div class="scroll compact-scroll"><table id="ctrAttributionOverview"></table></div>
@@ -477,7 +488,7 @@
         </div>
       </section>
       <section class="panel" style="margin-top:12px">
-        <h2>CTR与内容方向关系</h2>
+        <div class="panel-heading"><h2>CTR与内容方向关系</h2><button class="module-export-button" data-export-video-attribution="ctr" data-export-dimension="direction" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="scroll"><table id="ctrDirectionTable"></table></div>
           <div class="analysis-box" id="ctrDirectionSummary"></div>
@@ -487,7 +498,7 @@
 
     <div id="conversionAttributionPage" class="analysis-page" hidden>
       <section class="panel" style="margin-top:18px">
-        <h2>转化率变化归因总览</h2>
+        <div class="panel-heading"><h2>转化率变化归因总览</h2><button class="module-export-button" data-export-video-attribution="conversion" type="button">导出计算</button></div>
         <div class="panel-body">
           <p class="note">转化率使用加权口径：SKU订单 / 商品点击，不直接平均单条视频转化率。请先设置基期和对比期。</p>
           <div class="scroll compact-scroll"><table id="conversionAttributionOverview"></table></div>
@@ -509,7 +520,7 @@
 
     <div id="gmvAttributionPage" class="analysis-page" hidden>
       <section class="panel" style="margin-top:18px">
-        <h2>GMV变化归因总览</h2>
+        <div class="panel-heading"><h2>GMV变化归因总览</h2><button class="module-export-button" data-export-video-volume="gmv" type="button">导出计算</button></div>
         <div class="panel-body">
           <p class="note">GMV按周期内明细记录直接求和；变化量 = 对比期 GMV - 基期 GMV，变化率 = 变化量 / 基期 GMV。</p>
           <div class="scroll compact-scroll"><table id="gmvAttributionOverview"></table></div>
@@ -531,7 +542,7 @@
 
     <div id="exposureAttributionPage" class="analysis-page" hidden>
       <section class="panel" style="margin-top:18px">
-        <h2>商品曝光变化归因总览</h2>
+        <div class="panel-heading"><h2>商品曝光变化归因总览</h2><button class="module-export-button" data-export-video-volume="exposure" type="button">导出计算</button></div>
         <div class="panel-body">
           <p class="note">商品曝光按周期内明细记录直接求和；变化量 = 对比期商品曝光 - 基期商品曝光，变化率 = 变化量 / 基期商品曝光。</p>
           <div class="scroll compact-scroll"><table id="exposureAttributionOverview"></table></div>
@@ -1381,13 +1392,13 @@
       sheet["!freeze"] = { xSplit: 0, ySplit: headerRow + 1 };
       sheet["!autofilter"] = { ref: XLSX.utils.encode_range({ r: headerRow, c: range.s.c }, { r: range.e.r, c: range.e.c }) };
     }
-    function exportAttributionWorkbook(metricKey) {
+    function exportAttributionWorkbook(metricKey, dimensionOverride = "") {
       if (!attributionReady()) {
         alert("请先设置基期和对比期，再导出计算明细。");
         return;
       }
       const result = computeAnalysis();
-      const dimensionKey = metricKey === "conversion" ? state.conversionAttributionDimension : state.ctrAttributionDimension;
+      const dimensionKey = dimensionOverride || (metricKey === "conversion" ? state.conversionAttributionDimension : state.ctrAttributionDimension);
       const data = attributionExportRows(result, metricKey, dimensionKey);
       if (!data.detailRows.length) {
         alert("当前基期和对比期没有可导出的计算明细。");
@@ -1590,13 +1601,13 @@
       ];
       return { metric, dimension, summaryHeaders, summaryRows, detailHeaders, detailRows, formulaRows };
     }
-    function exportVolumeAttributionWorkbook(metricKey) {
+    function exportVolumeAttributionWorkbook(metricKey, dimensionOverride = "") {
       if (!attributionReady()) {
         alert("请先设置基期和对比期，再导出计算明细。");
         return;
       }
       const result = computeAnalysis();
-      const dimensionKey = metricKey === "exposure" ? state.exposureAttributionDimension : state.gmvAttributionDimension;
+      const dimensionKey = dimensionOverride || (metricKey === "exposure" ? state.exposureAttributionDimension : state.gmvAttributionDimension);
       const data = volumeAttributionExportRows(result, metricKey, dimensionKey);
       if (!data.detailRows.length) {
         alert("当前基期和对比期没有可导出的计算明细。");
@@ -1623,6 +1634,138 @@
       XLSX.utils.book_append_sheet(workbook, detailSheet, "纳入计算明细");
       const date = new Date().toISOString().slice(0, 10);
       XLSX.writeFile(workbook, `视频素材-${data.metric.label}-${data.dimension.label}-变化明细-${date}.xlsx`);
+    }
+    const videoModuleDefinitions = {
+      period: {
+        title: "基期 vs 对比期",
+        tableId: "periodCompareTable",
+        formulas: ["订单、成交件、VV、曝光、点击和GMV均按期间内明细求和。", "日均订单 = 期间订单合计 / 有数据天数。", "CTR = 点击合计 / VV合计；转化率 = 订单合计 / 点击合计。"]
+      },
+      calendar: {
+        title: "每日视频表现日历",
+        formulas: ["按日期汇总当天所有纳入筛选的视频日明细。", "稳单 = 当天属于稳定出单素材的订单合计。", "CTR = 当天点击合计 / VV合计；转化率 = 当天订单合计 / 点击合计。"]
+      },
+      baseline: {
+        title: "总体基准 vs 稳定出单基准",
+        tableId: "baselineTable",
+        formulas: ["先按视频汇总周期表现，再计算素材基准。", "素材日均指标 = 素材周期合计 / 素材活跃天数。", "稳定素材需同时达到稳定出单天数和稳定日均订单阈值。"]
+      },
+      recent: {
+        title: "最近新发布素材表现",
+        tableId: "recentTable",
+        formulas: ["新素材由发布时间与当前分析周期末日的间隔判断。", "日均订单、VV和曝光 = 新素材周期合计 / 发布后有效天数。", "vs稳定订单 = 新素材日均订单 / 稳定素材日均订单。"]
+      },
+      top: {
+        title: "周期内销量好的视频素材",
+        tableId: "topTable",
+        formulas: ["按视频汇总分析周期内明细，并按总订单从高到低排序。", "日均订单 = 视频总订单 / 视频活跃天数。", "CTR和转化率使用点击、VV、订单合计后的加权结果。"]
+      },
+      trend: {
+        title: "周期趋势变化",
+        tableId: "trendTable",
+        formulas: ["按日期汇总订单、成交件、VV、曝光、点击和GMV。", "设置基期与对比期后，图表按两段周期相同序号的日期对齐。", "柱形指标为求和值，率指标为加权CTR和加权转化率。"]
+      },
+      stable: {
+        title: "稳定出单视频变化详情",
+        tableId: "stableDetailTable",
+        formulas: ["仅纳入达到稳定出单天数和稳定日均订单阈值的视频。", "选择单条稳定素材后，仅导出该视频；未选择时导出全部稳定视频。", "每日CTR = 点击 / VV；每日转化率 = 订单 / 点击。"]
+      }
+    };
+    function videoModuleResultAoa(moduleKey, result) {
+      const definition = videoModuleDefinitions[moduleKey];
+      if (definition?.tableId) {
+        const table = document.getElementById(definition.tableId);
+        return table ? [...table.querySelectorAll("tr")].map(tr => [...tr.querySelectorAll("th,td")].map(cell => cell.textContent.trim())) : [];
+      }
+      if (moduleKey === "calendar") {
+        return [["日期", "素材数", "订单", "成交件", "VV/播放量", "商品曝光", "点击", "CTR", "转化率", "GMV", "稳定订单"],
+          ...result.trend.map(row => [row.date, row.videos, row.all.orders, row.all.salesQty, row.all.w, row.all.exposure, row.all.clicks, row.allCtr, row.allConversion, row.all.gmv, row.stable.orders])];
+      }
+      return [];
+    }
+    function videoModuleSourceRows(moduleKey, result) {
+      const currentRows = result.filteredAll.filter(row => inDateRange(row.date, state.analysisStart, state.analysisEnd));
+      const periodReady = attributionReady();
+      if (moduleKey === "period") {
+        if (!periodReady) return [];
+        const periods = attributionPeriodRows(result);
+        return [...periods.baseRows.map(row => ({ period: "基期", row })), ...periods.compareRows.map(row => ({ period: "对比期", row }))];
+      }
+      if (moduleKey === "trend" && periodReady) {
+        const periods = attributionPeriodRows(result);
+        return [...periods.baseRows.map(row => ({ period: "基期", row })), ...periods.compareRows.map(row => ({ period: "对比期", row }))];
+      }
+      if (moduleKey === "recent") {
+        const ids = new Set(result.recent.map(row => row.key));
+        return currentRows.filter(row => ids.has(rowVideoKey(row))).map(row => ({ period: "分析周期", row }));
+      }
+      if (moduleKey === "top") {
+        const ids = new Set(result.top.map(row => row.key));
+        return currentRows.filter(row => ids.has(rowVideoKey(row))).map(row => ({ period: "分析周期", row }));
+      }
+      if (moduleKey === "stable") {
+        const selected = String(state.stableVideoKey || "");
+        return currentRows.filter(row => result.stableIds.has(rowVideoKey(row)) && (!selected || rowVideoKey(row) === selected)).map(row => ({ period: "分析周期", row }));
+      }
+      return currentRows.map(row => ({ period: "分析周期", row }));
+    }
+    function videoModuleDetailAoa(sourceRows, result) {
+      const lookup = publishInfoLookup();
+      const headers = ["期间", "日期", "视频ID", "视频标题", "达人", "产品", "方向", "类型", "批次", "粉丝", "匹配方式", "是否稳定素材", "订单", "成交件", "VV/播放量", "商品曝光", "点击", "源表CTR", "模块回算CTR", "源表转化率", "模块回算转化率", "GMV"];
+      const rows = sourceRows.map(({ period, row }) => {
+        const meta = publishInfoFor(row, lookup);
+        const ctr = num(row.w) > 0 ? num(row.clicks) / num(row.w) : 0;
+        const conversion = num(row.clicks) > 0 ? num(row.orders) / num(row.clicks) : 0;
+        return [period, row.date || "", row.videoId || "", row.title || "", row.creator || meta?.idTikTok || "", meta?.product || "", meta?.direction || "", meta?.type || "", meta?.lot || "", meta?.follower || "", meta?.matchType || "", result.stableIds.has(rowVideoKey(row)) ? "是" : "否", num(row.orders), num(row.salesQty), num(row.w), num(row.exposure), num(row.clicks), num(row.ctr), ctr, num(row.conversion), conversion, num(row.gmv)];
+      });
+      return [headers, ...rows];
+    }
+    function videoModuleFormulaAoa(moduleKey) {
+      const definition = videoModuleDefinitions[moduleKey];
+      const filters = [state.metaProduct, state.metaDirection, state.metaType, state.metaLot].map(value => value || "全部");
+      return [
+        ["项目", "当前口径/公式"],
+        ["模块", definition.title],
+        ["分析周期", `${state.analysisStart || "最早"} ~ ${state.analysisEnd || "最新"}`],
+        ["基期", `${state.baseStart || "未设置"} ~ ${state.baseEnd || "未设置"}`],
+        ["对比期", `${state.compareStart || "未设置"} ~ ${state.compareEnd || "未设置"}`],
+        ["页面筛选", `产品=${filters[0]}；方向=${filters[1]}；类型=${filters[2]}；批次=${filters[3]}；搜索=${state.search || "无"}`],
+        ["低播放过滤", `仅纳入 VV/播放量 >= ${num(state.minW, 500)} 的视频日明细。`],
+        ["稳定素材规则", `出单天数 >= ${num(state.stableMinOrderDays, 1)} 且日均订单 >= ${num(state.stableMinDailyOrders, 1)}。`],
+        ["指标核对", "模块汇总统一使用点击/VV和订单/点击回算率；导出明细同时保留源表CTR、源表转化率与模块回算值。"],
+        ...definition.formulas.map((formula, index) => [`公式${index + 1}`, formula]),
+        ["明细说明", "“纳入计算明细”保留实际参与本模块计算的视频日记录，可按视频ID、日期和期间回查。"]
+      ];
+    }
+    function exportVideoModuleWorkbook(moduleKey) {
+      const definition = videoModuleDefinitions[moduleKey];
+      if (!definition) return;
+      if (moduleKey === "period" && !attributionReady()) {
+        alert("请先设置基期和对比期，再导出该模块。");
+        return;
+      }
+      const result = computeAnalysis();
+      const resultAoa = videoModuleResultAoa(moduleKey, result);
+      const sourceRows = videoModuleSourceRows(moduleKey, result);
+      const detailAoa = videoModuleDetailAoa(sourceRows, result);
+      const workbook = XLSX.utils.book_new();
+      const formulaSheet = XLSX.utils.aoa_to_sheet(videoModuleFormulaAoa(moduleKey));
+      formulaSheet["!cols"] = [{ wch: 20 }, { wch: 100 }];
+      styleAttributionSheet(formulaSheet);
+      XLSX.utils.book_append_sheet(workbook, formulaSheet, "计算口径");
+      const resultSheet = XLSX.utils.aoa_to_sheet(resultAoa.length ? resultAoa : [["说明"], ["当前模块暂无结果"]]);
+      resultSheet["!cols"] = (resultAoa[0] || ["说明"]).map(value => ({ wch: Math.max(14, Math.min(36, String(value).length * 2 + 4)) }));
+      styleAttributionSheet(resultSheet);
+      XLSX.utils.book_append_sheet(workbook, resultSheet, "模块结果");
+      const detailSheet = XLSX.utils.aoa_to_sheet(detailAoa);
+      detailSheet["!cols"] = detailAoa[0].map((value, index) => ({ wch: [2, 3].includes(index) ? 36 : Math.max(12, Math.min(24, String(value).length * 2 + 4)) }));
+      styleAttributionSheet(detailSheet);
+      const detailRange = XLSX.utils.decode_range(detailSheet["!ref"]);
+      for (let row = 1; row <= detailRange.e.r; row += 1) {
+        [17, 18, 19, 20].forEach(col => { const cell = detailSheet[XLSX.utils.encode_cell({ r: row, c: col })]; if (cell) cell.z = "0.00%"; });
+      }
+      XLSX.utils.book_append_sheet(workbook, detailSheet, "纳入计算明细");
+      XLSX.writeFile(workbook, `视频素材-${definition.title}-计算明细-${new Date().toISOString().slice(0, 10)}.xlsx`);
     }
     function renderAttributionSummary(targetId, rows, metricKey, dimensionName = "维度") {
       const metric = attributionMetric(metricKey);
@@ -2297,6 +2440,18 @@
         state.analysisTab = target.dataset.analysisTab;
         saveState();
         render();
+        return;
+      }
+      if (target?.dataset?.exportVideoModule) {
+        exportVideoModuleWorkbook(target.dataset.exportVideoModule);
+        return;
+      }
+      if (target?.dataset?.exportVideoAttribution) {
+        exportAttributionWorkbook(target.dataset.exportVideoAttribution, target.dataset.exportDimension || "");
+        return;
+      }
+      if (target?.dataset?.exportVideoVolume) {
+        exportVolumeAttributionWorkbook(target.dataset.exportVideoVolume, target.dataset.exportDimension || "");
         return;
       }
       if (target?.classList?.contains("meta-edit-button")) {
