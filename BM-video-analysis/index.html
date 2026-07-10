@@ -198,7 +198,7 @@
     #trendTable { min-width: 1320px; }
     #periodCompareTable { min-width: 1180px; }
     #ctrAttributionTable, #conversionAttributionTable,
-    #ctrDirectionTable, #conversionDirectionTable,
+    #ctrDirectionTable,
     #ctrAttributionOverview, #conversionAttributionOverview { min-width: 1500px; }
     .chart-tools {
       display: flex;
@@ -468,6 +468,7 @@
         <div class="panel-body">
           <div class="filters" style="margin-bottom:10px">
             <label>拆解维度<select id="ctrAttributionDimension"></select></label>
+            <button type="button" class="primary" id="exportCtrAttribution">导出计算明细</button>
           </div>
           <div class="scroll"><table id="ctrAttributionTable"></table></div>
           <div class="analysis-box" id="ctrDimensionSummary"></div>
@@ -496,16 +497,10 @@
         <div class="panel-body">
           <div class="filters" style="margin-bottom:10px">
             <label>拆解维度<select id="conversionAttributionDimension"></select></label>
+            <button type="button" class="primary" id="exportConversionAttribution">导出计算明细</button>
           </div>
           <div class="scroll"><table id="conversionAttributionTable"></table></div>
           <div class="analysis-box" id="conversionDimensionSummary"></div>
-        </div>
-      </section>
-      <section class="panel" style="margin-top:12px">
-        <h2>转化率与内容方向关系</h2>
-        <div class="panel-body">
-          <div class="scroll"><table id="conversionDirectionTable"></table></div>
-          <div class="analysis-box" id="conversionDirectionSummary"></div>
         </div>
       </section>
     </div>
@@ -1272,6 +1267,111 @@
       document.getElementById(id).innerHTML = `<tr><th>维度值</th><th class="num">基期素材</th><th class="num">基期${metric.denominatorLabel}</th><th class="num">基期${metric.numeratorLabel}</th><th class="num">基期${metric.label}</th><th class="num">对比期素材</th><th class="num">对比期${metric.denominatorLabel}</th><th class="num">对比期${metric.numeratorLabel}</th><th class="num">对比期${metric.label}</th><th class="num">变化</th><th class="num">${metric.lossLabel}</th><th>风险</th><th>建议动作</th></tr>` +
         (rows.length ? rows.slice(0, 80).map(row => `<tr><td>${escapeHtml(row.label)}</td><td class="num">${row.base.videos}</td><td class="num">${money0.format(row.base.denominator)}</td><td class="num">${money(row.base.numerator)}</td>${attrRateCell(row.base.rate)}<td class="num">${row.compare.videos}</td><td class="num">${money0.format(row.compare.denominator)}</td><td class="num">${money(row.compare.numerator)}</td>${attrRateCell(row.compare.rate)}${attrDeltaCell(row.deltaPp)}<td class="num ${row.loss > 0 ? "bad" : ""}">${money(row.loss)}</td><td class="${row.risk === "观察" ? "mid" : "bad"}">${escapeHtml(row.risk)}</td><td>${escapeHtml(row.action)}</td></tr>`).join("") : `<tr><td colspan="13">设置基期和对比期后显示。</td></tr>`);
     }
+    function attributionExportRows(result, metricKey, dimensionKey) {
+      const metric = attributionMetric(metricKey);
+      const dimension = attributionDimension(dimensionKey);
+      const lookup = publishInfoLookup();
+      const grouped = buildAttributionRows(result, metricKey, dimensionKey);
+      const { baseRows, compareRows } = attributionPeriodRows(result);
+      const summaryHeaders = [
+        "指标", "拆解维度", "维度值",
+        "基期素材数", `基期${metric.denominatorLabel}`, `基期${metric.numeratorLabel}`, `基期${metric.label}`,
+        "对比期素材数", `对比期${metric.denominatorLabel}`, `对比期${metric.numeratorLabel}`, `对比期${metric.label}`,
+        "变化(pp)", `按基期${metric.label}应有${metric.numeratorLabel}`, `实际${metric.numeratorLabel}`, metric.lossLabel,
+        "风险", "建议动作"
+      ];
+      const summaryRows = grouped.map(row => [
+        metric.label, dimension.label, row.label,
+        row.base.videos, row.base.denominator, row.base.numerator, row.base.rate,
+        row.compare.videos, row.compare.denominator, row.compare.numerator, row.compare.rate,
+        row.deltaPp, row.compare.denominator * row.base.rate, row.compare.numerator, row.loss,
+        row.risk, row.action
+      ]);
+      const detailHeaders = [
+        "期间", "日期", "视频ID", "视频标题", "达人", "产品", "方向", "类型", "批次", "粉丝", "匹配方式",
+        "拆解维度", "维度值", "分母字段", "分母值", "分子字段", "分子值", `单行${metric.label}`,
+        "VV/播放量", "商品曝光", "点击", "订单", "成交件", "GMV"
+      ];
+      const detailRows = [];
+      const appendDetail = (period, rows) => rows.forEach(row => {
+        const meta = publishInfoFor(row, lookup);
+        const denominator = metric.denominator(row);
+        const numerator = metric.numerator(row);
+        detailRows.push([
+          period, row.date || "", row.videoId || "", row.title || "", row.creator || meta?.idTikTok || "",
+          meta?.product || "", meta?.direction || "", meta?.type || "", meta?.lot || "", meta?.follower || "", meta?.matchType || "",
+          dimension.label, attributionGroupKey(row, lookup, dimensionKey), metric.denominatorLabel, denominator,
+          metric.numeratorLabel, numerator, denominator > 0 ? numerator / denominator : 0,
+          num(row.w), num(row.exposure), num(row.clicks), num(row.orders), num(row.salesQty), num(row.gmv)
+        ]);
+      });
+      appendDetail("基期", baseRows);
+      appendDetail("对比期", compareRows);
+      const formulaRows = [
+        ["项目", "当前口径/公式"],
+        ["导出指标", metric.label],
+        ["拆解维度", dimension.label],
+        ["基期", `${state.baseStart || "最早"} ~ ${state.baseEnd || "最新"}`],
+        ["对比期", `${state.compareStart || "最早"} ~ ${state.compareEnd || "最新"}`],
+        ["素材过滤", `仅纳入当前页面筛选结果；VV/播放量 >= ${num(state.minW, 500)}，并应用搜索、产品、方向、类型、批次筛选。`],
+        ["聚合口径", `${metric.label} = 维度内全部记录的${metric.numeratorLabel}合计 / ${metric.denominatorLabel}合计；不平均单条视频的${metric.label}。`],
+        ["变化", `变化(pp) = 对比期${metric.label} - 基期${metric.label}，以百分点表示。`],
+        [metric.lossLabel, `MAX(0, 对比期${metric.denominatorLabel} × 基期${metric.label} - 对比期实际${metric.numeratorLabel})。`],
+        ["明细粒度", "“纳入计算明细”每一行对应一条视频日维度记录，并标明期间和归属维度。"]
+      ];
+      return { metric, dimension, summaryHeaders, summaryRows, detailHeaders, detailRows, formulaRows };
+    }
+    function styleAttributionSheet(sheet, headerRow = 0) {
+      if (!sheet["!ref"]) return;
+      const range = XLSX.utils.decode_range(sheet["!ref"]);
+      for (let col = range.s.c; col <= range.e.c; col += 1) {
+        const cell = sheet[XLSX.utils.encode_cell({ r: headerRow, c: col })];
+        if (cell) cell.s = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "4F46E5" } }, alignment: { horizontal: "center", vertical: "center", wrapText: true } };
+      }
+      sheet["!freeze"] = { xSplit: 0, ySplit: headerRow + 1 };
+      sheet["!autofilter"] = { ref: XLSX.utils.encode_range({ r: headerRow, c: range.s.c }, { r: range.e.r, c: range.e.c }) };
+    }
+    function exportAttributionWorkbook(metricKey) {
+      if (!attributionReady()) {
+        alert("请先设置基期和对比期，再导出计算明细。");
+        return;
+      }
+      const result = computeAnalysis();
+      const dimensionKey = metricKey === "conversion" ? state.conversionAttributionDimension : state.ctrAttributionDimension;
+      const data = attributionExportRows(result, metricKey, dimensionKey);
+      if (!data.detailRows.length) {
+        alert("当前基期和对比期没有可导出的计算明细。");
+        return;
+      }
+      const workbook = XLSX.utils.book_new();
+      const formulaSheet = XLSX.utils.aoa_to_sheet(data.formulaRows);
+      formulaSheet["!cols"] = [{ wch: 20 }, { wch: 100 }];
+      styleAttributionSheet(formulaSheet);
+      XLSX.utils.book_append_sheet(workbook, formulaSheet, "计算口径");
+
+      const summarySheet = XLSX.utils.aoa_to_sheet([data.summaryHeaders, ...data.summaryRows]);
+      summarySheet["!cols"] = data.summaryHeaders.map((header, index) => ({ wch: index === 2 || index >= 15 ? 28 : Math.max(12, String(header).length * 2) }));
+      styleAttributionSheet(summarySheet);
+      const summaryRange = XLSX.utils.decode_range(summarySheet["!ref"]);
+      for (let row = 1; row <= summaryRange.e.r; row += 1) {
+        [6, 10].forEach(col => { const cell = summarySheet[XLSX.utils.encode_cell({ r: row, c: col })]; if (cell) cell.z = "0.00%"; });
+        const deltaCell = summarySheet[XLSX.utils.encode_cell({ r: row, c: 11 })];
+        if (deltaCell) deltaCell.z = "0.00\"pp\"";
+      }
+      XLSX.utils.book_append_sheet(workbook, summarySheet, "维度汇总");
+
+      const detailSheet = XLSX.utils.aoa_to_sheet([data.detailHeaders, ...data.detailRows]);
+      detailSheet["!cols"] = data.detailHeaders.map((header, index) => ({ wch: [2, 3].includes(index) ? 36 : [4, 5, 6, 7, 8, 10, 12].includes(index) ? 18 : Math.max(12, String(header).length * 2) }));
+      styleAttributionSheet(detailSheet);
+      const detailRange = XLSX.utils.decode_range(detailSheet["!ref"]);
+      for (let row = 1; row <= detailRange.e.r; row += 1) {
+        const rateCell = detailSheet[XLSX.utils.encode_cell({ r: row, c: 17 })];
+        if (rateCell) rateCell.z = "0.00%";
+      }
+      XLSX.utils.book_append_sheet(workbook, detailSheet, "纳入计算明细");
+      const date = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(workbook, `视频素材-${data.metric.label}-${data.dimension.label}-计算明细-${date}.xlsx`);
+    }
     function renderAttributionSummary(targetId, rows, metricKey, dimensionName = "维度") {
       const metric = attributionMetric(metricKey);
       if (!attributionReady() || !rows.length) {
@@ -1326,11 +1426,11 @@
       if (ctrSelect) ctrSelect.innerHTML = attributionOptions(state.ctrAttributionDimension);
       if (conversionSelect) conversionSelect.innerHTML = attributionOptions(state.conversionAttributionDimension);
       if (!attributionReady()) {
-        ["ctrAttributionOverview", "conversionAttributionOverview", "ctrAttributionTable", "conversionAttributionTable", "ctrDirectionTable", "conversionDirectionTable"].forEach(id => {
+        ["ctrAttributionOverview", "conversionAttributionOverview", "ctrAttributionTable", "conversionAttributionTable", "ctrDirectionTable"].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.innerHTML = `<tr><td>设置基期和对比期后显示。</td></tr>`;
         });
-        ["ctrAttributionSummary", "ctrDimensionSummary", "ctrDirectionSummary", "conversionAttributionSummary", "conversionDimensionSummary", "conversionDirectionSummary"].forEach(id => {
+        ["ctrAttributionSummary", "ctrDimensionSummary", "ctrDirectionSummary", "conversionAttributionSummary", "conversionDimensionSummary"].forEach(id => {
           const el = document.getElementById(id);
           if (el) el.innerHTML = analysisHtml(["先选择基期和对比期，归因页会自动按加权口径拆解变化。"]);
         });
@@ -1348,13 +1448,10 @@
 
       const conversionOverview = attributionOverviewRows(result, "conversion");
       const conversionRows = buildAttributionRows(result, "conversion", state.conversionAttributionDimension);
-      const conversionDirectionRows = buildAttributionRows(result, "conversion", "direction");
       renderAttributionOverviewTable("conversionAttributionOverview", conversionOverview, "conversion");
       renderAttributionTable("conversionAttributionTable", conversionRows, "conversion");
-      renderAttributionTable("conversionDirectionTable", conversionDirectionRows, "conversion");
       renderOverviewSummary("conversionAttributionSummary", conversionOverview, "conversion");
       renderAttributionSummary("conversionDimensionSummary", conversionRows, "conversion", attributionDimension(state.conversionAttributionDimension).label);
-      renderAttributionSummary("conversionDirectionSummary", conversionDirectionRows, "conversion", "方向");
     }
     function periodRangeText(summary) {
       if (!summary.start && !summary.end) return "未设置";
@@ -2001,6 +2098,8 @@
       render();
       document.getElementById("importStatus").textContent = "已清空视频数据。";
     };
+    document.getElementById("exportCtrAttribution").onclick = () => exportAttributionWorkbook("ctr");
+    document.getElementById("exportConversionAttribution").onclick = () => exportAttributionWorkbook("conversion");
     document.getElementById("exportSnapshot").onclick = () => {
       const result = computeAnalysis();
       const headers = ["类型", "日期/视频ID", "达人", "发布时间", "发布表产品", "发布表方向", "KOL/KOC", "批次", "粉丝", "匹配方式", "订单", "成交件", "VV/播放量", "商品曝光", "点击", "CTR", "转化率", "GMV"];
