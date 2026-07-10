@@ -1231,26 +1231,44 @@
         ids: sameIds
       };
     }
+    function attributionComparison(item, metric) {
+      const base = attributionTotals(item.baseRows, metric);
+      const compare = attributionTotals(item.compareRows, metric);
+      const basePresent = item.baseRows.length > 0;
+      const comparePresent = item.compareRows.length > 0;
+      const comparable = basePresent && comparePresent && base.denominator > 0 && compare.denominator > 0;
+      let changeState = "可比";
+      if (!basePresent && comparePresent) changeState = "新增";
+      else if (basePresent && !comparePresent) changeState = "退出";
+      else if (!comparable) changeState = "样本不足";
+      return {
+        ...item,
+        base,
+        compare,
+        basePresent,
+        comparePresent,
+        comparable,
+        changeState,
+        deltaPp: comparable ? (compare.rate - base.rate) * 100 : null,
+        loss: comparable ? Math.max(0, compare.denominator * base.rate - compare.numerator) : null
+      };
+    }
     function attributionOverviewRows(result, metricKey) {
       const metric = attributionMetric(metricKey);
       const { baseRows, compareRows } = attributionPeriodRows(result);
       const lookup = publishInfoLookup();
       const same = sameVideoRows(baseRows, compareRows);
       const baseIds = new Set(baseRows.map(rowVideoKey));
-      const oldCompare = compareRows.filter(row => baseIds.has(rowVideoKey(row)));
+      const compareIds = new Set(compareRows.map(rowVideoKey));
       const newCompare = compareRows.filter(row => !baseIds.has(rowVideoKey(row)));
+      const exitedBase = baseRows.filter(row => !compareIds.has(rowVideoKey(row)));
       return [
         { label: "全部有效素材", baseRows, compareRows, note: "当前筛选口径内所有有效视频" },
         { label: "已匹配发布信息素材", baseRows: baseRows.filter(row => publishInfoFor(row, lookup)), compareRows: compareRows.filter(row => publishInfoFor(row, lookup)), note: "能匹配到产品/方向/类型/批次的素材" },
         { label: "同视频集合", baseRows: same.base, compareRows: same.compare, note: "基期和对比期都出现的视频，用来排除新老素材结构变化" },
-        { label: "对比期老素材", baseRows: [], compareRows: oldCompare, note: "对比期中基期已存在的素材" },
-        { label: "对比期新素材", baseRows: [], compareRows: newCompare, note: "对比期中新出现的素材" }
-      ].map(item => {
-        const base = attributionTotals(item.baseRows, metric);
-        const compare = attributionTotals(item.compareRows, metric);
-        const loss = Math.max(0, compare.denominator * base.rate - compare.numerator);
-        return { ...item, base, compare, deltaPp: (compare.rate - base.rate) * 100, loss };
-      });
+        { label: "对比期新素材", baseRows: [], compareRows: newCompare, note: "仅在对比期出现，标记为新增，不与 0% 基准比较" },
+        { label: "基期退出素材", baseRows: exitedBase, compareRows: [], note: "仅在基期出现，标记为退出，不计算百分点变化" }
+      ].map(item => attributionComparison(item, metric));
     }
     function buildAttributionRows(result, metricKey, dimensionKey) {
       const metric = attributionMetric(metricKey);
@@ -1265,28 +1283,21 @@
       baseRows.forEach(row => touch(attributionGroupKey(row, lookup, dimensionKey)).baseRows.push(row));
       compareRows.forEach(row => touch(attributionGroupKey(row, lookup, dimensionKey)).compareRows.push(row));
       const rows = [...grouped.values()].map(item => {
-        const base = attributionTotals(item.baseRows, metric);
-        const compare = attributionTotals(item.compareRows, metric);
-        const deltaPp = (compare.rate - base.rate) * 100;
-        const loss = Math.max(0, compare.denominator * base.rate - compare.numerator);
+        const comparison = attributionComparison(item, metric);
         return {
-          ...item,
-          base,
-          compare,
-          deltaPp,
-          loss,
-          belowOverall: compare.denominator > 0 && compare.rate < overallCompare.rate
+          ...comparison,
+          belowOverall: comparison.compare.denominator > 0 && comparison.compare.rate < overallCompare.rate
         };
       });
       const trafficCut = percentile(rows.map(row => row.compare.denominator), .8);
-      const lossCut = percentile(rows.map(row => row.loss), .8);
+      const lossCut = percentile(rows.filter(row => row.comparable).map(row => row.loss), .8);
       rows.forEach(row => {
         row.highTraffic = row.compare.denominator >= trafficCut && row.compare.denominator > 0;
-        row.highLoss = row.loss >= lossCut && row.loss > 0;
+        row.highLoss = row.comparable && row.loss >= lossCut && row.loss > 0;
         row.risk = attributionRisk(row, metric, overallCompare.rate);
         row.action = attributionAction(row, metric);
       });
-      return rows.sort((a, b) => (b.loss - a.loss) || (a.deltaPp - b.deltaPp) || (b.compare.denominator - a.compare.denominator));
+      return rows.sort((a, b) => ((b.loss ?? -1) - (a.loss ?? -1)) || ((a.deltaPp ?? Infinity) - (b.deltaPp ?? Infinity)) || (b.compare.denominator - a.compare.denominator));
     }
     function percentile(values, ratio) {
       const clean = values.map(num).filter(value => value > 0).sort((a, b) => a - b);
@@ -1294,6 +1305,9 @@
       return clean[Math.min(clean.length - 1, Math.max(0, Math.ceil(clean.length * ratio) - 1))];
     }
     function attributionRisk(row, metric, overallRate) {
+      if (row.changeState === "新增") return "新增观察";
+      if (row.changeState === "退出") return "退出";
+      if (!row.comparable) return "样本不足";
       const risks = [];
       if (row.compare.denominator >= metric.trafficFloor && row.deltaPp <= metric.severeDropPp) risks.push("严重下滑");
       if (row.compare.denominator >= metric.trafficFloor && row.compare.rate < overallRate) risks.push(`低于整体${metric.label}`);
@@ -1302,7 +1316,9 @@
       return risks.length ? risks.join(" / ") : "观察";
     }
     function attributionAction(row, metric) {
-      if (!row.compare.denominator) return "对比期无流量，先确认是否停发或未覆盖。";
+      if (row.changeState === "新增") return "新增维度，先观察达到样本阈值后的稳定表现。";
+      if (row.changeState === "退出") return "对比期未出现，确认是否停发、断流或被筛选排除。";
+      if (!row.comparable) return "有效分母不足，暂不判断变化，先补足样本。";
       if (row.loss > 0 && row.deltaPp < 0) return metric.nextAction;
       if (row.deltaPp > 0 && row.compare.denominator >= metric.trafficFloor) return "表现改善，可以复盘对应素材结构并放大相似方向。";
       if (row.compare.denominator < metric.trafficFloor) return "样本偏小，先观察或合并相近方向再判断。";
@@ -1311,22 +1327,27 @@
     function attributionReady() {
       return (state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd);
     }
-    function attrRateCell(value) {
-      return `<td class="num">${pct(value)}</td>`;
+    function attrPeriodCells(totals, present) {
+      if (!present) return `<td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td>`;
+      return `<td class="num">${totals.videos}</td><td class="num">${money0.format(totals.denominator)}</td><td class="num">${money(totals.numerator)}</td><td class="num">${totals.denominator > 0 ? pct(totals.rate) : "—"}</td>`;
     }
-    function attrDeltaCell(value) {
-      const cls = value < -0.005 ? "bad" : value > 0.005 ? "good" : "";
-      return `<td class="num ${cls}">${value > 0 ? "+" : ""}${value.toFixed(2)}pp</td>`;
+    function attrDeltaCell(row) {
+      if (!row.comparable) {
+        const cls = row.changeState === "新增" ? "good" : row.changeState === "退出" ? "mid" : "";
+        return `<td class="num ${cls}">${escapeHtml(row.changeState)}</td>`;
+      }
+      const cls = row.deltaPp < -0.005 ? "bad" : row.deltaPp > 0.005 ? "good" : "";
+      return `<td class="num ${cls}">${row.deltaPp > 0 ? "+" : ""}${row.deltaPp.toFixed(2)}pp</td>`;
     }
     function renderAttributionOverviewTable(id, rows, metricKey) {
       const metric = attributionMetric(metricKey);
       document.getElementById(id).innerHTML = `<tr><th>口径</th><th class="num">基期素材</th><th class="num">基期${metric.denominatorLabel}</th><th class="num">基期${metric.numeratorLabel}</th><th class="num">基期${metric.label}</th><th class="num">对比期素材</th><th class="num">对比期${metric.denominatorLabel}</th><th class="num">对比期${metric.numeratorLabel}</th><th class="num">对比期${metric.label}</th><th class="num">变化</th><th class="num">${metric.lossLabel}</th><th>说明</th></tr>` +
-        rows.map(row => `<tr><td>${escapeHtml(row.label)}</td><td class="num">${row.base.videos}</td><td class="num">${money0.format(row.base.denominator)}</td><td class="num">${money(row.base.numerator)}</td>${attrRateCell(row.base.rate)}<td class="num">${row.compare.videos}</td><td class="num">${money0.format(row.compare.denominator)}</td><td class="num">${money(row.compare.numerator)}</td>${attrRateCell(row.compare.rate)}${attrDeltaCell(row.deltaPp)}<td class="num">${money(row.loss)}</td><td>${escapeHtml(row.note)}</td></tr>`).join("");
+        rows.map(row => `<tr><td>${escapeHtml(row.label)}</td>${attrPeriodCells(row.base, row.basePresent)}${attrPeriodCells(row.compare, row.comparePresent)}${attrDeltaCell(row)}<td class="num">${row.comparable ? money(row.loss) : "—"}</td><td>${escapeHtml(row.note)}</td></tr>`).join("");
     }
     function renderAttributionTable(id, rows, metricKey) {
       const metric = attributionMetric(metricKey);
       document.getElementById(id).innerHTML = `<tr><th>维度值</th><th class="num">基期素材</th><th class="num">基期${metric.denominatorLabel}</th><th class="num">基期${metric.numeratorLabel}</th><th class="num">基期${metric.label}</th><th class="num">对比期素材</th><th class="num">对比期${metric.denominatorLabel}</th><th class="num">对比期${metric.numeratorLabel}</th><th class="num">对比期${metric.label}</th><th class="num">变化</th><th class="num">${metric.lossLabel}</th><th>风险</th><th>建议动作</th></tr>` +
-        (rows.length ? rows.slice(0, 80).map(row => `<tr><td>${escapeHtml(row.label)}</td><td class="num">${row.base.videos}</td><td class="num">${money0.format(row.base.denominator)}</td><td class="num">${money(row.base.numerator)}</td>${attrRateCell(row.base.rate)}<td class="num">${row.compare.videos}</td><td class="num">${money0.format(row.compare.denominator)}</td><td class="num">${money(row.compare.numerator)}</td>${attrRateCell(row.compare.rate)}${attrDeltaCell(row.deltaPp)}<td class="num ${row.loss > 0 ? "bad" : ""}">${money(row.loss)}</td><td class="${row.risk === "观察" ? "mid" : "bad"}">${escapeHtml(row.risk)}</td><td>${escapeHtml(row.action)}</td></tr>`).join("") : `<tr><td colspan="13">设置基期和对比期后显示。</td></tr>`);
+        (rows.length ? rows.slice(0, 80).map(row => `<tr><td>${escapeHtml(row.label)}</td>${attrPeriodCells(row.base, row.basePresent)}${attrPeriodCells(row.compare, row.comparePresent)}${attrDeltaCell(row)}<td class="num ${row.comparable && row.loss > 0 ? "bad" : ""}">${row.comparable ? money(row.loss) : "—"}</td><td class="${row.risk === "观察" || row.risk === "新增观察" ? "mid" : row.risk === "退出" || row.risk === "样本不足" ? "" : "bad"}">${escapeHtml(row.risk)}</td><td>${escapeHtml(row.action)}</td></tr>`).join("") : `<tr><td colspan="13">设置基期和对比期后显示。</td></tr>`);
     }
     function attributionExportRows(result, metricKey, dimensionKey) {
       const metric = attributionMetric(metricKey);
@@ -1338,14 +1359,14 @@
         "指标", "拆解维度", "维度值",
         "基期素材数", `基期${metric.denominatorLabel}`, `基期${metric.numeratorLabel}`, `基期${metric.label}`,
         "对比期素材数", `对比期${metric.denominatorLabel}`, `对比期${metric.numeratorLabel}`, `对比期${metric.label}`,
-        "变化(pp)", `按基期${metric.label}应有${metric.numeratorLabel}`, `实际${metric.numeratorLabel}`, metric.lossLabel,
+        "变化状态", "变化(pp)", `按基期${metric.label}应有${metric.numeratorLabel}`, `实际${metric.numeratorLabel}`, metric.lossLabel,
         "风险", "建议动作"
       ];
       const summaryRows = grouped.map(row => [
         metric.label, dimension.label, row.label,
-        row.base.videos, row.base.denominator, row.base.numerator, row.base.rate,
-        row.compare.videos, row.compare.denominator, row.compare.numerator, row.compare.rate,
-        row.deltaPp, row.compare.denominator * row.base.rate, row.compare.numerator, row.loss,
+        row.basePresent ? row.base.videos : "", row.basePresent ? row.base.denominator : "", row.basePresent ? row.base.numerator : "", row.basePresent && row.base.denominator > 0 ? row.base.rate : "",
+        row.comparePresent ? row.compare.videos : "", row.comparePresent ? row.compare.denominator : "", row.comparePresent ? row.compare.numerator : "", row.comparePresent && row.compare.denominator > 0 ? row.compare.rate : "",
+        row.changeState, row.comparable ? row.deltaPp : "", row.comparable ? row.compare.denominator * row.base.rate : "", row.comparePresent ? row.compare.numerator : "", row.comparable ? row.loss : "",
         row.risk, row.action
       ]);
       const detailHeaders = [
@@ -1362,7 +1383,7 @@
           period, row.date || "", row.videoId || "", row.title || "", row.creator || meta?.idTikTok || "",
           meta?.product || "", meta?.direction || "", meta?.type || "", meta?.lot || "", meta?.follower || "", meta?.matchType || "",
           dimension.label, attributionGroupKey(row, lookup, dimensionKey), metric.denominatorLabel, denominator,
-          metric.numeratorLabel, numerator, denominator > 0 ? numerator / denominator : 0,
+          metric.numeratorLabel, numerator, denominator > 0 ? numerator / denominator : "",
           num(row.w), num(row.exposure), num(row.clicks), num(row.orders), num(row.salesQty), num(row.gmv)
         ]);
       });
@@ -1376,7 +1397,9 @@
         ["对比期", `${state.compareStart || "最早"} ~ ${state.compareEnd || "最新"}`],
         ["素材过滤", `仅纳入当前页面筛选结果；VV/播放量 >= ${num(state.minW, 500)}，并应用搜索、产品、方向、类型、批次筛选。`],
         ["聚合口径", `${metric.label} = 维度内全部记录的${metric.numeratorLabel}合计 / ${metric.denominatorLabel}合计；不平均单条视频的${metric.label}。`],
-        ["变化", `变化(pp) = 对比期${metric.label} - 基期${metric.label}，以百分点表示。`],
+        ["可比规则", "仅当维度在基期、对比期都存在记录，且两个周期的有效分母都大于 0 时，才计算百分点变化和损失估算。"],
+        ["新增/退出", "仅对比期出现标记为“新增”，仅基期出现标记为“退出”；缺失周期留空，不以 0% 代替。"],
+        ["变化", `可比时：变化(pp) = 对比期${metric.label} - 基期${metric.label}，以百分点表示。`],
         [metric.lossLabel, `MAX(0, 对比期${metric.denominatorLabel} × 基期${metric.label} - 对比期实际${metric.numeratorLabel})。`],
         ["明细粒度", "“纳入计算明细”每一行对应一条视频日维度记录，并标明期间和归属维度。"]
       ];
@@ -1411,12 +1434,12 @@
       XLSX.utils.book_append_sheet(workbook, formulaSheet, "计算口径");
 
       const summarySheet = XLSX.utils.aoa_to_sheet([data.summaryHeaders, ...data.summaryRows]);
-      summarySheet["!cols"] = data.summaryHeaders.map((header, index) => ({ wch: index === 2 || index >= 15 ? 28 : Math.max(12, String(header).length * 2) }));
+      summarySheet["!cols"] = data.summaryHeaders.map((header, index) => ({ wch: index === 2 || index >= 16 ? 28 : Math.max(12, String(header).length * 2) }));
       styleAttributionSheet(summarySheet);
       const summaryRange = XLSX.utils.decode_range(summarySheet["!ref"]);
       for (let row = 1; row <= summaryRange.e.r; row += 1) {
         [6, 10].forEach(col => { const cell = summarySheet[XLSX.utils.encode_cell({ r: row, c: col })]; if (cell) cell.z = "0.00%"; });
-        const deltaCell = summarySheet[XLSX.utils.encode_cell({ r: row, c: 11 })];
+        const deltaCell = summarySheet[XLSX.utils.encode_cell({ r: row, c: 12 })];
         if (deltaCell) deltaCell.z = "0.00\"pp\"";
       }
       XLSX.utils.book_append_sheet(workbook, summarySheet, "维度汇总");
@@ -1773,13 +1796,15 @@
         document.getElementById(targetId).innerHTML = analysisHtml(["先设置基期与对比期，再导入视频明细和发布信息表，即可看到归因。"]);
         return;
       }
-      const valid = rows.filter(row => row.compare.denominator > 0 || row.base.denominator > 0);
+      const valid = rows.filter(row => row.comparable);
       const worstLoss = valid.find(row => row.loss > 0);
       const worstDrop = [...valid].filter(row => row.compare.denominator >= metric.trafficFloor).sort((a, b) => a.deltaPp - b.deltaPp)[0];
       const improved = [...valid].filter(row => row.deltaPp > 0 && row.compare.denominator >= metric.trafficFloor).sort((a, b) => b.deltaPp - a.deltaPp)[0];
       const lowCount = valid.filter(row => row.risk !== "观察").length;
+      const newCount = rows.filter(row => row.changeState === "新增").length;
+      const exitedCount = rows.filter(row => row.changeState === "退出").length;
       document.getElementById(targetId).innerHTML = analysisHtml([
-        `判断：${dimensionName}维度里有 ${lowCount} 个风险项；${worstLoss ? `${worstLoss.label} 的${metric.lossLabel}最大（${money(worstLoss.loss)}）` : "暂未出现明显损失项"}。`,
+        `判断：${dimensionName}维度里有 ${lowCount} 个可比风险项；另有 ${newCount} 个新增项、${exitedCount} 个退出项，不拿 0% 作为基准。${worstLoss ? `${worstLoss.label} 的${metric.lossLabel}最大（${money(worstLoss.loss)}）` : "暂未出现明显可比损失项"}。`,
         worstDrop ? `依据：${worstDrop.label} 从 ${pct(worstDrop.base.rate)} 变为 ${pct(worstDrop.compare.rate)}，变化 ${worstDrop.deltaPp.toFixed(2)}pp，属于${worstDrop.risk}。` : `依据：暂无${metric.denominatorLabel}达到 ${money0.format(metric.trafficFloor)} 的显著下滑项。`,
         improved ? `机会：${improved.label} 逆势提升 ${improved.deltaPp.toFixed(2)}pp，可复盘其素材脚本和承接方式。` : "机会：暂未发现高样本且明显改善的方向，先优先处理拖累项。",
         `下一步：${worstLoss ? worstLoss.action : metric.nextAction}`
@@ -1795,9 +1820,12 @@
         document.getElementById(targetId).innerHTML = analysisHtml([]);
         return;
       }
+      const overallJudgment = overall.comparable
+        ? `判断：整体${metric.label}从 ${pct(overall.base.rate)} 变为 ${pct(overall.compare.rate)}，变化 ${overall.deltaPp.toFixed(2)}pp，${overall.loss > 0 ? `${metric.lossLabel}约 ${money(overall.loss)}` : "没有形成明显损失"}。`
+        : `判断：整体样本${overall.changeState === "可比" ? "分母不足" : overall.changeState}，暂不计算${metric.label}变化。`;
       document.getElementById(targetId).innerHTML = analysisHtml([
-        `判断：整体${metric.label}从 ${pct(overall.base.rate)} 变为 ${pct(overall.compare.rate)}，变化 ${overall.deltaPp.toFixed(2)}pp，${overall.loss > 0 ? `${metric.lossLabel}约 ${money(overall.loss)}` : "没有形成明显损失"}。`,
-        same && same.compare.denominator ? `依据：同视频集合变化 ${same.deltaPp.toFixed(2)}pp；如果同视频也下滑，更多是素材疲劳或承接变化，如果只整体下滑，更多是新老素材结构变化。` : "依据：同视频集合样本不足，建议补足连续日期后再判断新老素材结构。",
+        overallJudgment,
+        same?.comparable ? `依据：同视频集合变化 ${same.deltaPp.toFixed(2)}pp；如果同视频也下滑，更多是素材疲劳或承接变化，如果只整体下滑，更多是新老素材结构变化。` : "依据：同视频集合样本不足，建议补足连续日期后再判断新老素材结构。",
         matched ? `匹配情况：已匹配发布信息素材占对比期${metric.denominatorLabel} ${overall.compare.denominator ? pct(matched.compare.denominator / overall.compare.denominator) : "0.00%"}，方向归因可信度由这里决定。` : "",
         fresh && fresh.compare.denominator ? `新素材：对比期新素材${metric.label}为 ${pct(fresh.compare.rate)}，可用来判断新发布内容是否拉低整体。` : "新素材：对比期新素材样本不足。",
         "下一步：切到方向/产品/达人维度，优先处理“高流量高损失”和“严重下滑”的项。"
