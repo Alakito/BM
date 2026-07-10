@@ -119,6 +119,17 @@
       margin-bottom: 14px;
     }
     .panel > h2 { padding: 16px 18px; border-bottom: 1px solid var(--line); background: #fff; }
+    .panel-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 12px 16px 12px 18px;
+      border-bottom: 1px solid var(--line);
+      background: #fff;
+    }
+    .panel-heading h2 { padding: 0; border: 0; }
+    button.module-export-button { padding: 7px 11px; border-radius: 10px; font-size: 12px; white-space: nowrap; }
     .panel-body { padding: 16px 18px; }
     .note { color: var(--muted); font-size: 13px; line-height: 1.7; }
     .kpis {
@@ -262,14 +273,14 @@
           <span class="note" id="metadataStatus">可选：导入发布信息汇总后，用 VID 优先、ID 兜底补充产品/方向/KOL-KOC/批次。</span>
         </div>
         <div class="filters" id="controls"></div>
-        <p class="note">消耗读取“成本”，收入读取“总收入”，ROI 优先读取表格 ROI，缺失时按 收入 / 消耗 计算。点击率读取“商品广告点击率”，广告转化率读取“广告转化率”；缺失时分别按 广告点击 / 广告曝光、SKU 订单 / 广告点击 反推。</p>
+        <p class="note">消耗读取“成本”，收入读取“总收入”。模块汇总统一按 收入合计 / 消耗合计 回算 ROI，按 点击合计 / 曝光合计 回算 CTR，按 SKU订单合计 / 点击合计 回算广告转化率；源表率字段保留在导出明细中供核对。</p>
       </div>
     </section>
 
     <div class="kpis" id="kpis"></div>
 
     <section class="panel">
-      <h2>基期 vs 对比期</h2>
+      <div class="panel-heading"><h2>基期 vs 对比期</h2><button class="module-export-button" data-export-ad-module="period" type="button">导出计算</button></div>
       <div class="panel-body">
         <div class="scroll compact-scroll"><table id="periodCompareTable"></table></div>
         <div class="analysis-box" id="periodCompareAnalysis"></div>
@@ -277,14 +288,14 @@
     </section>
 
     <section class="panel">
-      <h2>每日广告素材表现日历</h2>
+      <div class="panel-heading"><h2>每日广告素材表现日历</h2><button class="module-export-button" data-export-ad-module="calendar" type="button">导出计算</button></div>
       <div class="panel-body">
         <div class="calendar-grid" id="calendar"></div>
         <div class="formula-strip">
           <div class="formula-item"><b>稳单</b>当天属于“稳定成交素材”的 SKU 订单合计；稳定素材由“稳定成交天数”和“稳定日均订单”阈值共同判断。</div>
-          <div class="formula-item"><b>CTR</b>优先读取表格“商品广告点击率”；缺失时按 商品广告点击数 / 商品广告曝光数 计算。</div>
-          <div class="formula-item"><b>转化</b>优先读取表格“广告转化率”；缺失时按 SKU 订单数 / 商品广告点击数 计算。</div>
-          <div class="formula-item"><b>ROI</b>优先读取表格“ROI”；缺失时按 总收入 / 成本 计算。这里的收入、消耗均为广告端素材口径。</div>
+          <div class="formula-item"><b>CTR</b>按 商品广告点击数合计 / 商品广告曝光数合计 计算。</div>
+          <div class="formula-item"><b>转化</b>按 SKU订单数合计 / 商品广告点击数合计 计算。</div>
+          <div class="formula-item"><b>ROI</b>按 总收入合计 / 成本合计 计算。这里的收入、消耗均为广告端素材口径。</div>
         </div>
         <div class="analysis-box" id="calendarAnalysis"></div>
       </div>
@@ -292,14 +303,14 @@
 
     <div class="grid two" style="margin-top:12px">
       <section class="panel">
-        <h2>总体基准 vs 稳定成交基准</h2>
+        <div class="panel-heading"><h2>总体基准 vs 稳定成交基准</h2><button class="module-export-button" data-export-ad-module="baseline" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="scroll compact-scroll"><table id="baselineTable"></table></div>
           <div class="analysis-box" id="baselineAnalysis"></div>
         </div>
       </section>
       <section class="panel">
-        <h2>最近新发布广告素材表现</h2>
+        <div class="panel-heading"><h2>最近新发布广告素材表现</h2><button class="module-export-button" data-export-ad-module="recent" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="scroll compact-scroll"><table id="recentTable"></table></div>
           <div class="analysis-box" id="recentAnalysis"></div>
@@ -308,7 +319,7 @@
     </div>
 
     <section class="panel" style="margin-top:12px">
-      <h2>周期内收入好的广告素材</h2>
+      <div class="panel-heading"><h2>周期内收入好的广告素材</h2><button class="module-export-button" data-export-ad-module="top" type="button">导出计算</button></div>
       <div class="panel-body">
         <div class="scroll"><table id="topTable"></table></div>
         <div class="analysis-box" id="topAnalysis"></div>
@@ -317,7 +328,7 @@
 
     <div class="grid two" style="margin-top:12px">
       <section class="panel">
-        <h2>周期趋势变化</h2>
+        <div class="panel-heading"><h2>周期趋势变化</h2><button class="module-export-button" data-export-ad-module="trend" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="chart-tools">
             <div class="metric-group">
@@ -335,7 +346,7 @@
         </div>
       </section>
       <section class="panel">
-        <h2>稳定成交广告素材变化详情</h2>
+        <div class="panel-heading"><h2>稳定成交广告素材变化详情</h2><button class="module-export-button" data-export-ad-module="stable" type="button">导出计算</button></div>
         <div class="panel-body">
           <div class="chart-tools">
             <label class="wide">稳定素材筛选<select id="stableVideoFilter"></select></label>
@@ -1658,6 +1669,104 @@
       bindControls();
       updateSaveButton();
     }
+    const adModuleDefinitions = {
+      period: { title: "基期 vs 对比期", tableId: "periodCompareTable", formulas: ["消耗、收入、订单、曝光和点击按期间内广告日明细求和。", "ROI = 收入合计 / 消耗合计；平均下单成本 = 消耗合计 / 订单合计。", "CTR = 点击合计 / 曝光合计；广告转化率 = 订单合计 / 点击合计。"] },
+      calendar: { title: "每日广告素材表现日历", formulas: ["按日期汇总当天所有纳入筛选的广告素材明细。", "每日ROI = 当日收入合计 / 当日消耗合计。", "稳单 = 当天属于稳定成交素材的订单合计。"] },
+      baseline: { title: "总体基准 vs 稳定成交基准", tableId: "baselineTable", formulas: ["先按广告视频素材汇总周期表现，再计算总体和稳定素材基准。", "素材日均指标 = 素材周期合计 / 素材活跃天数。", "稳定素材需同时达到稳定成交天数和稳定日均订单阈值。"] },
+      recent: { title: "最近新发布广告素材表现", tableId: "recentTable", formulas: ["新素材由发布时间与当前分析周期末日的间隔判断。", "日均消耗、收入和订单 = 新素材周期合计 / 发布后有效天数。", "ROI、CTR和转化率均使用汇总后的加权口径。"] },
+      top: { title: "周期内收入好的广告素材", tableId: "topTable", formulas: ["按素材汇总分析周期内明细，并按总收入、ROI、订单依次排序。", "平均下单成本 = 素材总消耗 / 素材总订单。", "ROI = 总收入 / 总消耗。"] },
+      trend: { title: "周期趋势变化", tableId: "trendTable", formulas: ["按日期汇总消耗、收入、订单、曝光和点击。", "设置基期与对比期后，图表按两段周期相同序号的日期对齐。", "ROI、CTR、转化率、2秒播放率和6秒播放率均按对应分母加权计算。"] },
+      stable: { title: "稳定成交广告素材变化详情", tableId: "stableDetailTable", formulas: ["仅纳入达到稳定成交天数和稳定日均订单阈值的广告素材。", "选择单条稳定素材后，仅导出该视频；未选择时导出全部稳定素材。", "每日ROI = 收入 / 消耗；每日下单成本 = 消耗 / 订单。"] }
+    };
+    function styleAdModuleSheet(sheet) {
+      if (!sheet["!ref"]) return;
+      const range = XLSX.utils.decode_range(sheet["!ref"]);
+      for (let col = range.s.c; col <= range.e.c; col += 1) {
+        const cell = sheet[XLSX.utils.encode_cell({ r: 0, c: col })];
+        if (cell) cell.s = { font: { bold: true, color: { rgb: "FFFFFF" } }, fill: { fgColor: { rgb: "4F46E5" } }, alignment: { horizontal: "center", vertical: "center", wrapText: true } };
+      }
+      sheet["!freeze"] = { xSplit: 0, ySplit: 1 };
+      sheet["!autofilter"] = { ref: XLSX.utils.encode_range({ r: 0, c: range.s.c }, { r: range.e.r, c: range.e.c }) };
+    }
+    function adModuleResultAoa(moduleKey, result) {
+      const definition = adModuleDefinitions[moduleKey];
+      if (definition?.tableId) {
+        const table = document.getElementById(definition.tableId);
+        return table ? [...table.querySelectorAll("tr")].map(tr => [...tr.querySelectorAll("th,td")].map(cell => cell.textContent.trim())) : [];
+      }
+      if (moduleKey === "calendar") {
+        return [["日期", "素材数", "消耗", "收入", "ROI", "订单", "平均下单成本", "广告曝光", "广告点击", "CTR", "广告转化率", "稳定订单"], ...result.trend.map(row => [row.date, row.videos, row.all.spend, row.all.revenue, row.allRoi, row.all.orders, row.allCostPerOrder, row.all.exposure, row.all.clicks, row.allCtr, row.allConversion, row.stable.orders])];
+      }
+      return [];
+    }
+    function adPeriodReady() { return Boolean((state.baseStart || state.baseEnd) && (state.compareStart || state.compareEnd)); }
+    function adModuleSourceRows(moduleKey, result) {
+      const currentRows = result.filteredAll.filter(row => inDateRange(row.date, state.analysisStart, state.analysisEnd));
+      const periodRows = () => ({ baseRows: result.filteredAll.filter(row => inDateRange(row.date, state.baseStart, state.baseEnd)), compareRows: result.filteredAll.filter(row => inDateRange(row.date, state.compareStart, state.compareEnd)) });
+      if (moduleKey === "period") {
+        if (!adPeriodReady()) return [];
+        const periods = periodRows();
+        return [...periods.baseRows.map(row => ({ period: "基期", row })), ...periods.compareRows.map(row => ({ period: "对比期", row }))];
+      }
+      if (moduleKey === "trend" && adPeriodReady()) {
+        const periods = periodRows();
+        return [...periods.baseRows.map(row => ({ period: "基期", row })), ...periods.compareRows.map(row => ({ period: "对比期", row }))];
+      }
+      if (moduleKey === "recent") {
+        const ids = new Set(result.recent.map(row => row.key));
+        return currentRows.filter(row => ids.has(rowVideoKey(row))).map(row => ({ period: "分析周期", row }));
+      }
+      if (moduleKey === "top") {
+        const ids = new Set(result.top.map(row => row.key));
+        return currentRows.filter(row => ids.has(rowVideoKey(row))).map(row => ({ period: "分析周期", row }));
+      }
+      if (moduleKey === "stable") {
+        const selected = String(state.stableVideoKey || "");
+        return currentRows.filter(row => result.stableIds.has(rowVideoKey(row)) && (!selected || rowVideoKey(row) === selected)).map(row => ({ period: "分析周期", row }));
+      }
+      return currentRows.map(row => ({ period: "分析周期", row }));
+    }
+    function adModuleDetailAoa(sourceRows, result) {
+      const lookup = publishInfoLookup();
+      const headers = ["期间", "日期", "视频ID", "视频标题", "达人", "商品ID", "商品", "产品", "方向", "类型", "批次", "粉丝", "匹配方式", "是否稳定素材", "消耗", "收入", "源表ROI", "模块回算ROI", "订单", "平均下单成本", "广告曝光", "广告点击", "源表CTR", "模块回算CTR", "源表广告转化率", "模块回算广告转化率", "2秒播放率", "6秒播放率"];
+      const rows = sourceRows.map(({ period, row }) => {
+        const meta = publishInfoFor(row, lookup);
+        const roiBack = num(row.spend) > 0 ? num(row.revenue) / num(row.spend) : 0;
+        const ctrBack = num(row.exposure) > 0 ? num(row.clicks) / num(row.exposure) : 0;
+        const conversionBack = num(row.clicks) > 0 ? num(row.orders) / num(row.clicks) : 0;
+        return [period, row.date || "", row.videoId || "", row.title || "", row.creator || meta?.idTikTok || "", row.productId || "", row.product || "", meta?.product || "", meta?.direction || "", meta?.type || "", meta?.lot || "", meta?.follower || "", meta?.matchType || "", result.stableIds.has(rowVideoKey(row)) ? "是" : "否", num(row.spend), num(row.revenue), num(row.roi, roiBack), roiBack, num(row.orders), num(row.orders) > 0 ? num(row.spend) / num(row.orders) : 0, num(row.exposure), num(row.clicks), num(row.ctr, ctrBack), ctrBack, num(row.conversion, conversionBack), conversionBack, num(row.play2Rate), num(row.play6Rate)];
+      });
+      return [headers, ...rows];
+    }
+    function adModuleFormulaAoa(moduleKey) {
+      const definition = adModuleDefinitions[moduleKey];
+      const filters = [state.metaProduct, state.metaDirection, state.metaType, state.metaLot].map(value => value || "全部");
+      return [["项目", "当前口径/公式"], ["模块", definition.title], ["分析周期", `${state.analysisStart || "最早"} ~ ${state.analysisEnd || "最新"}`], ["基期", `${state.baseStart || "未设置"} ~ ${state.baseEnd || "未设置"}`], ["对比期", `${state.compareStart || "未设置"} ~ ${state.compareEnd || "未设置"}`], ["页面筛选", `产品=${filters[0]}；方向=${filters[1]}；类型=${filters[2]}；批次=${filters[3]}；搜索=${state.search || "无"}`], ["低消耗过滤", `仅纳入消耗 >= ${num(state.minSpend, 0)} 的广告素材日明细。`], ["稳定素材规则", `成交天数 >= ${num(state.stableMinOrderDays, 1)} 且日均订单 >= ${num(state.stableMinDailyOrders, 1)}。`], ["指标核对", "模块汇总统一使用收入/消耗、点击/曝光、订单/点击回算指标；导出明细同时保留源表率和模块回算值。"], ...definition.formulas.map((formula, index) => [`公式${index + 1}`, formula]), ["明细说明", "“纳入计算明细”保留实际参与本模块计算的广告素材日记录，可按视频ID、商品ID、日期和期间回查。"]];
+    }
+    function exportAdModuleWorkbook(moduleKey) {
+      const definition = adModuleDefinitions[moduleKey];
+      if (!definition) return;
+      if (moduleKey === "period" && !adPeriodReady()) { alert("请先设置基期和对比期，再导出该模块。"); return; }
+      const result = computeAnalysis();
+      const resultAoa = adModuleResultAoa(moduleKey, result);
+      const detailAoa = adModuleDetailAoa(adModuleSourceRows(moduleKey, result), result);
+      const workbook = XLSX.utils.book_new();
+      const formulaSheet = XLSX.utils.aoa_to_sheet(adModuleFormulaAoa(moduleKey));
+      formulaSheet["!cols"] = [{ wch: 20 }, { wch: 100 }];
+      styleAdModuleSheet(formulaSheet);
+      XLSX.utils.book_append_sheet(workbook, formulaSheet, "计算口径");
+      const resultSheet = XLSX.utils.aoa_to_sheet(resultAoa.length ? resultAoa : [["说明"], ["当前模块暂无结果"]]);
+      resultSheet["!cols"] = (resultAoa[0] || ["说明"]).map(value => ({ wch: Math.max(14, Math.min(36, String(value).length * 2 + 4)) }));
+      styleAdModuleSheet(resultSheet);
+      XLSX.utils.book_append_sheet(workbook, resultSheet, "模块结果");
+      const detailSheet = XLSX.utils.aoa_to_sheet(detailAoa);
+      detailSheet["!cols"] = detailAoa[0].map((value, index) => ({ wch: [2, 3].includes(index) ? 36 : Math.max(12, Math.min(24, String(value).length * 2 + 4)) }));
+      styleAdModuleSheet(detailSheet);
+      const detailRange = XLSX.utils.decode_range(detailSheet["!ref"]);
+      for (let row = 1; row <= detailRange.e.r; row += 1) [22, 23, 24, 25, 26, 27].forEach(col => { const cell = detailSheet[XLSX.utils.encode_cell({ r: row, c: col })]; if (cell) cell.z = "0.00%"; });
+      XLSX.utils.book_append_sheet(workbook, detailSheet, "纳入计算明细");
+      XLSX.writeFile(workbook, `广告素材-${definition.title}-计算明细-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    }
     function bindControls() {
       [
         ["search", "search", "text"], ["analysisStart", "analysisStart", "text"], ["analysisEnd", "analysisEnd", "text"],
@@ -1688,6 +1797,10 @@
     }
     document.addEventListener("click", event => {
       const target = event.target;
+      if (target?.dataset?.exportAdModule) {
+        exportAdModuleWorkbook(target.dataset.exportAdModule);
+        return;
+      }
       if (target?.classList?.contains("meta-edit-button")) {
         state.metaEditKey = target.dataset.metaEditKey || "";
         render();
