@@ -5,6 +5,24 @@
   const SESSION_VALUE = "bm-admin-session-2026";
   const ALLOWED_USERNAME = "admin";
   const PASSWORD_SHA256 = "13b1b3589dcaa18e3eaaf6cad939a90a7e963fffe2b8cd9ce078687dff2cf470";
+  const BM_OS_RECOVERY_URL = "https://bm-ops-workspace.wise-mochi-2318.chatgpt.site/";
+
+  function recoveryParams() {
+    try {
+      return new URLSearchParams(location.hash.replace(/^#/, ""));
+    } catch (error) {
+      return new URLSearchParams();
+    }
+  }
+
+  function forwardPasswordRecovery() {
+    const params = recoveryParams();
+    if (params.get("type") !== "recovery" || !params.get("access_token")) return false;
+    location.replace(`${BM_OS_RECOVERY_URL}${location.hash}`);
+    return true;
+  }
+
+  if (forwardPasswordRecovery()) return;
 
   window.__BM_AUTH_GATE_VERSION__ = "2026-07-12";
   document.documentElement.dataset.bmAuth = "pending";
@@ -216,7 +234,9 @@
   }
 
   function initialize() {
-    if (isAuthorized()) unlock();
+    const params = recoveryParams();
+    if (params.get("type") === "recovery" || params.get("error_code")) unlock();
+    else if (isAuthorized()) unlock();
     else lock();
   }
 
