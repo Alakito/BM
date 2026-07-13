@@ -17,8 +17,10 @@
 
   function forwardPasswordRecovery() {
     const params = recoveryParams();
-    if (params.get("type") !== "recovery" || !params.get("access_token")) return false;
-    location.replace(`${BM_OS_RECOVERY_URL}${location.hash}`);
+    const query = new URLSearchParams(location.search);
+    const isRecoveryHash = params.get("type") === "recovery" || params.has("error_code");
+    if (!isRecoveryHash && !query.has("code")) return false;
+    location.replace(`${BM_OS_RECOVERY_URL}${location.search}${location.hash}`);
     return true;
   }
 

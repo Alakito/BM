@@ -4,7 +4,19 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>BM 运营工具中心</title>
-  <script src="./assets/auth-gate.js?v=20260712"></script>
+  <script>
+    (function () {
+      var target = "https://bm-ops-workspace.wise-mochi-2318.chatgpt.site/";
+      var hash = new URLSearchParams(location.hash.replace(/^#/, ""));
+      var query = new URLSearchParams(location.search);
+      var isRecoveryHash = hash.get("type") === "recovery" || hash.has("error_code");
+      var isPkceCallback = query.has("code");
+      if (isRecoveryHash || isPkceCallback) {
+        location.replace(target + location.search + location.hash);
+      }
+    }());
+  </script>
+  <script src="./assets/auth-gate.js?v=20260713-recovery3"></script>
   <style>
     :root {
       --bg: #eef3f8;
