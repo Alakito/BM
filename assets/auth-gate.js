@@ -1,11 +1,19 @@
 (function () {
   "use strict";
 
-  const SESSION_KEY = "bmToolboxAuthSessionV1";
-  const SESSION_VALUE = "bm-admin-session-2026";
-  const ALLOWED_USERNAME = "admin";
-  const PASSWORD_SHA256 = "13b1b3589dcaa18e3eaaf6cad939a90a7e963fffe2b8cd9ce078687dff2cf470";
+  const SUPABASE_URL = "https://dwneujmcyuwzmflqpqxf.supabase.co";
+  const SUPABASE_KEY = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
+  const AUTH_STORAGE_KEY = "bm_tools_auth_v1";
   const BM_OS_RECOVERY_URL = "https://bm-ops-workspace.wise-mochi-2318.chatgpt.site/";
+  const SCRIPT_BASE = document.currentScript ? document.currentScript.src : location.href;
+  let client = null;
+
+  if (window.supabase && typeof window.supabase.createClient === "function") {
+    client = window.__BM_SUPABASE_CLIENT__ || window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { storageKey: AUTH_STORAGE_KEY }
+    });
+    window.__BM_SUPABASE_CLIENT__ = client;
+  }
 
   function recoveryParams() {
     try {
@@ -26,7 +34,7 @@
 
   if (forwardPasswordRecovery()) return;
 
-  window.__BM_AUTH_GATE_VERSION__ = "2026-07-12";
+  window.__BM_AUTH_GATE_VERSION__ = "2026-07-18-supabase-signup";
   document.documentElement.dataset.bmAuth = "pending";
 
   const style = document.createElement("style");
@@ -47,57 +55,64 @@
       visibility: visible !important;
       pointer-events: auto !important;
       padding: 24px;
-      background: #eef3f8;
+      background: radial-gradient(circle at 50% 18%, #f8f6ff 0, #eef3f8 52%, #e9f0f5 100%);
       color: #0f172a;
       font-family: Inter, system-ui, "Microsoft YaHei", Arial, sans-serif;
     }
     .bm-auth-panel {
-      width: min(420px, 100%);
+      width: min(430px, 100%);
       overflow: hidden;
       border: 1px solid #dbe3ef;
-      border-radius: 8px;
+      border-radius: 16px;
       background: #ffffff;
       box-shadow: 0 24px 64px rgba(15, 23, 42, .14);
     }
     .bm-auth-heading {
-      padding: 26px 28px 20px;
+      padding: 28px 30px 22px;
       border-bottom: 1px solid #e2e8f0;
+    }
+    .bm-auth-brand-row { display: flex; align-items: center; gap: 12px; }
+    .bm-auth-logo {
+      width: 42px;
+      height: 42px;
+      display: grid;
+      flex: 0 0 auto;
+      place-items: center;
+      border-radius: 12px;
+      color: #ffffff;
+      background: linear-gradient(135deg, #5b45e8, #7c3aed);
+      font-weight: 900;
     }
     .bm-auth-brand {
       margin: 0;
-      font-size: 24px;
+      font-size: 23px;
       line-height: 1.25;
-      font-weight: 800;
-      letter-spacing: 0;
+      font-weight: 850;
+      letter-spacing: -.02em;
     }
     .bm-auth-subtitle {
-      margin: 8px 0 0;
+      margin: 10px 0 0;
       color: #64748b;
       font-size: 14px;
       line-height: 1.6;
     }
     .bm-auth-form {
       display: grid;
-      gap: 16px;
-      padding: 24px 28px 28px;
+      gap: 15px;
+      padding: 24px 30px 28px;
     }
     .bm-auth-field { display: grid; gap: 7px; }
-    .bm-auth-label {
-      color: #334155;
-      font-size: 13px;
-      font-weight: 700;
-    }
+    .bm-auth-label { color: #334155; font-size: 13px; font-weight: 750; }
     .bm-auth-input {
       width: 100%;
-      height: 44px;
+      height: 45px;
       padding: 0 13px;
       border: 1px solid #cbd5e1;
-      border-radius: 6px;
+      border-radius: 9px;
       outline: none;
       background: #ffffff;
       color: #0f172a;
       font: inherit;
-      letter-spacing: 0;
     }
     .bm-auth-input:focus {
       border-color: #5b45e8;
@@ -105,24 +120,37 @@
     }
     .bm-auth-error {
       min-height: 20px;
-      margin: -4px 0 0;
-      color: #dc2626;
+      margin: -3px 0 0;
+      color: #64748b;
       font-size: 13px;
       line-height: 1.5;
     }
-    .bm-auth-submit {
-      width: 100%;
+    .bm-auth-error.is-error { color: #dc2626; }
+    .bm-auth-error.is-success { color: #15803d; }
+    .bm-auth-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+    .bm-auth-submit,
+    .bm-auth-signup {
       height: 44px;
-      border: 0;
-      border-radius: 6px;
-      background: #5b45e8;
-      color: #ffffff;
+      border-radius: 9px;
       font: inherit;
       font-weight: 800;
       cursor: pointer;
     }
+    .bm-auth-submit { border: 0; color: #ffffff; background: #5b45e8; }
     .bm-auth-submit:hover { background: #4f3bd1; }
-    .bm-auth-submit:disabled { cursor: wait; opacity: .7; }
+    .bm-auth-signup { border: 1px solid #c7bff5; color: #4f3bd1; background: #f7f5ff; }
+    .bm-auth-signup:hover { border-color: #8979e9; background: #f0edff; }
+    .bm-auth-submit:disabled,
+    .bm-auth-signup:disabled { cursor: wait; opacity: .65; }
+    .bm-auth-help {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      color: #8a98a8;
+      font-size: 12px;
+    }
+    .bm-auth-reset { padding: 0; border: 0; color: #5b45e8; background: transparent; font: inherit; font-weight: 750; cursor: pointer; }
     #bm-auth-logout {
       position: fixed;
       right: 18px;
@@ -131,24 +159,56 @@
       height: 36px;
       padding: 0 14px;
       border: 1px solid #dbe3ef;
-      border-radius: 6px;
+      border-radius: 8px;
       background: rgba(255, 255, 255, .96);
       color: #475569;
       box-shadow: 0 8px 24px rgba(15, 23, 42, .1);
       font: 700 13px/1 Inter, system-ui, "Microsoft YaHei", Arial, sans-serif;
-      letter-spacing: 0;
       cursor: pointer;
     }
     #bm-auth-logout:hover { border-color: #ef4444; color: #dc2626; }
+    @media (max-width: 480px) {
+      #bm-auth-gate { padding: 14px; }
+      .bm-auth-heading, .bm-auth-form { padding-left: 22px; padding-right: 22px; }
+      .bm-auth-actions { grid-template-columns: 1fr; }
+    }
   `;
   document.head.appendChild(style);
 
-  function isAuthorized() {
-    try {
-      return sessionStorage.getItem(SESSION_KEY) === SESSION_VALUE;
-    } catch (error) {
-      return false;
-    }
+  function loadSupabaseLibrary() {
+    if (window.supabase && typeof window.supabase.createClient === "function") return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = new URL("supabase-umd.js", SCRIPT_BASE).href;
+      script.onload = resolve;
+      script.onerror = () => reject(new Error("登录组件加载失败，请检查网络后刷新页面。"));
+      document.head.appendChild(script);
+    });
+  }
+
+  async function getClient() {
+    if (client) return client;
+    await loadSupabaseLibrary();
+    if (!window.supabase || typeof window.supabase.createClient !== "function") throw new Error("登录组件加载失败，请刷新页面。 ");
+    client = window.__BM_SUPABASE_CLIENT__ || window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
+      auth: { storageKey: AUTH_STORAGE_KEY }
+    });
+    window.__BM_SUPABASE_CLIENT__ = client;
+    return client;
+  }
+
+  function setMessage(message, kind) {
+    const target = document.querySelector(".bm-auth-error");
+    if (!target) return;
+    target.textContent = message;
+    target.classList.toggle("is-error", kind === "error");
+    target.classList.toggle("is-success", kind === "success");
+  }
+
+  function setBusy(busy) {
+    document.querySelectorAll(".bm-auth-submit,.bm-auth-signup,.bm-auth-reset").forEach(button => {
+      button.disabled = busy;
+    });
   }
 
   function addLogoutButton() {
@@ -157,14 +217,15 @@
     button.id = "bm-auth-logout";
     button.type = "button";
     button.textContent = "退出登录";
-    button.title = "退出并锁定 BM 运营工具";
-    button.addEventListener("click", function () {
+    button.title = "退出当前 BM 账号";
+    button.addEventListener("click", async function () {
+      button.disabled = true;
       try {
-        sessionStorage.removeItem(SESSION_KEY);
-      } catch (error) {
-        // Reloading still returns the page to the locked state when storage is unavailable.
+        const sb = await getClient();
+        await sb.auth.signOut();
+      } finally {
+        location.reload();
       }
-      location.reload();
     });
     document.body.appendChild(button);
   }
@@ -176,70 +237,130 @@
     addLogoutButton();
   }
 
-  async function sha256(value) {
-    const bytes = new TextEncoder().encode(value);
-    const digest = await crypto.subtle.digest("SHA-256", bytes);
-    return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
-  }
-
   function lock() {
     document.documentElement.dataset.bmAuth = "locked";
-    const gate = document.createElement("div");
+    let gate = document.getElementById("bm-auth-gate");
+    if (gate) return gate;
+    gate = document.createElement("div");
     gate.id = "bm-auth-gate";
     gate.innerHTML = `
       <section class="bm-auth-panel" aria-labelledby="bm-auth-title">
         <div class="bm-auth-heading">
-          <h1 class="bm-auth-brand" id="bm-auth-title">BM 运营工具中心</h1>
-          <p class="bm-auth-subtitle">请输入授权账号后进入运营工具。</p>
+          <div class="bm-auth-brand-row"><span class="bm-auth-logo">BM</span><h1 class="bm-auth-brand" id="bm-auth-title">BM 运营工具中心</h1></div>
+          <p class="bm-auth-subtitle">登录已有账号，或直接注册新账号进入老工具箱。</p>
         </div>
         <form class="bm-auth-form" autocomplete="on">
           <label class="bm-auth-field">
-            <span class="bm-auth-label">账号</span>
-            <input class="bm-auth-input" name="username" type="text" autocomplete="username" required autofocus>
+            <span class="bm-auth-label">邮箱</span>
+            <input class="bm-auth-input" name="email" type="email" autocomplete="email" placeholder="name@company.com" required autofocus>
           </label>
           <label class="bm-auth-field">
             <span class="bm-auth-label">密码</span>
-            <input class="bm-auth-input" name="password" type="password" autocomplete="current-password" required>
+            <input class="bm-auth-input" name="password" type="password" autocomplete="current-password" minlength="6" placeholder="至少 6 位" required>
           </label>
-          <p class="bm-auth-error" role="alert" aria-live="polite"></p>
-          <button class="bm-auth-submit" type="submit">登录</button>
+          <p class="bm-auth-error" role="status" aria-live="polite">正在连接账号服务…</p>
+          <div class="bm-auth-actions">
+            <button class="bm-auth-submit" type="submit">登录</button>
+            <button class="bm-auth-signup" type="button">注册新账号</button>
+          </div>
+          <div class="bm-auth-help"><span>注册成功后会自动进入工具箱</span><button class="bm-auth-reset" type="button">忘记密码？</button></div>
         </form>
       </section>
     `;
     document.body.appendChild(gate);
 
     const form = gate.querySelector("form");
-    const error = gate.querySelector(".bm-auth-error");
-    const submit = gate.querySelector(".bm-auth-submit");
+    const signup = gate.querySelector(".bm-auth-signup");
+    const reset = gate.querySelector(".bm-auth-reset");
+
+    async function credentials() {
+      const email = form.elements.email.value.trim();
+      const password = form.elements.password.value;
+      if (!email || !password) {
+        setMessage("请输入邮箱和密码。", "error");
+        return null;
+      }
+      if (password.length < 6) {
+        setMessage("密码至少需要 6 位。", "error");
+        return null;
+      }
+      return { email, password };
+    }
+
     form.addEventListener("submit", async function (event) {
       event.preventDefault();
-      error.textContent = "";
-      submit.disabled = true;
+      const values = await credentials();
+      if (!values) return;
+      setBusy(true);
+      setMessage("正在登录…");
       try {
-        const username = form.elements.username.value.trim();
-        const passwordHash = await sha256(form.elements.password.value);
-        if (username === ALLOWED_USERNAME && passwordHash === PASSWORD_SHA256) {
-          sessionStorage.setItem(SESSION_KEY, SESSION_VALUE);
-          form.reset();
-          unlock();
-          return;
-        }
-        error.textContent = "账号或密码错误，请重新输入。";
-        form.elements.password.value = "";
-        form.elements.password.focus();
-      } catch (authError) {
-        error.textContent = "当前浏览器无法完成验证，请升级浏览器后重试。";
+        const sb = await getClient();
+        const { data, error } = await sb.auth.signInWithPassword(values);
+        if (error) throw error;
+        if (!data.session) throw new Error("登录未完成，请稍后重试。");
+        unlock();
+      } catch (error) {
+        setMessage(`登录失败：${error.message || "请检查邮箱和密码。"}`, "error");
       } finally {
-        submit.disabled = false;
+        setBusy(false);
       }
     });
+
+    signup.addEventListener("click", async function () {
+      const values = await credentials();
+      if (!values) return;
+      setBusy(true);
+      setMessage("正在创建账号…");
+      try {
+        const sb = await getClient();
+        const { data, error } = await sb.auth.signUp(values);
+        if (error) throw error;
+        if (data.session) {
+          setMessage("注册成功，正在进入工具箱…", "success");
+          unlock();
+        } else {
+          setMessage("注册成功，请先到邮箱完成验证，然后返回登录。", "success");
+        }
+      } catch (error) {
+        setMessage(`注册失败：${error.message || "请稍后重试。"}`, "error");
+      } finally {
+        setBusy(false);
+      }
+    });
+
+    reset.addEventListener("click", async function () {
+      const email = form.elements.email.value.trim();
+      if (!email) return setMessage("请先填写需要重置密码的邮箱。", "error");
+      setBusy(true);
+      setMessage("正在发送重置邮件…");
+      try {
+        const sb = await getClient();
+        const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.origin + location.pathname });
+        if (error) throw error;
+        setMessage("重置邮件已发送，请打开邮箱里的链接。", "success");
+      } catch (error) {
+        setMessage(`发送失败：${error.message || "请稍后重试。"}`, "error");
+      } finally {
+        setBusy(false);
+      }
+    });
+    return gate;
   }
 
-  function initialize() {
-    const params = recoveryParams();
-    if (params.get("type") === "recovery" || params.get("error_code")) unlock();
-    else if (isAuthorized()) unlock();
-    else lock();
+  async function initialize() {
+    lock();
+    try {
+      const sb = await getClient();
+      const { data, error } = await sb.auth.getSession();
+      if (error) throw error;
+      sb.auth.onAuthStateChange((event, session) => {
+        if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) unlock();
+      });
+      if (data.session) unlock();
+      else setMessage("还没有账号？点击“注册新账号”即可创建。", "");
+    } catch (error) {
+      setMessage(error.message || "登录服务暂时不可用，请刷新页面重试。", "error");
+    }
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", initialize, { once: true });

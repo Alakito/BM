@@ -16,7 +16,8 @@
       }
     }());
   </script>
-  <script src="./assets/auth-gate.js?v=20260713-recovery3"></script>
+  <script src="./assets/supabase-umd.js"></script>
+  <script src="./assets/auth-gate.js?v=20260718-signup2"></script>
   <style>
     :root {
       --bg: #eef3f8;
@@ -231,13 +232,12 @@
     </main>
   </div>
 
-  <script src="assets/supabase-umd.js"></script>
   <script>
     const supabaseUrl = "https://dwneujmcyuwzmflqpqxf.supabase.co";
     const supabaseAnonKey = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
     const authLock = async (_name, _acquireTimeout, fn) => await fn();
     const supabaseGlobal = window.supabase || globalThis.supabase || (typeof supabase !== "undefined" ? supabase : null);
-    const sbClient = supabaseGlobal?.createClient(supabaseUrl, supabaseAnonKey, {
+    const sbClient = window.__BM_SUPABASE_CLIENT__ || supabaseGlobal?.createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         storageKey: "bm_tools_auth_v1",
         lock: authLock

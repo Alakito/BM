@@ -4,7 +4,8 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BM-TikTok Shop TH 项目利润测算器</title>
-  <script src="../assets/auth-gate.js?v=20260712"></script>
+  <script src="../assets/supabase-umd.js"></script>
+  <script src="../assets/auth-gate.js?v=20260718-signup2"></script>
   <style>
     :root {
       --ink: #17212b;
@@ -799,7 +800,6 @@
     </section>
   </main>
 
-  <script src="../assets/supabase-umd.js"></script>
   <script src="./xlsx-js-style.min.js"></script>
   <script>
     const scenarios = ["日常", "小促", "大促"];
@@ -811,7 +811,7 @@
     const supabaseAnonKey = "sb_publishable_B7sxIPezywUJNZM1YBilMQ_OSnCSxCp";
     const authLock = async (_name, _acquireTimeout, fn) => await fn();
     const supabaseGlobal = window.supabase || globalThis.supabase || (typeof supabase !== "undefined" ? supabase : null);
-    const sbClient = supabaseGlobal?.createClient(supabaseUrl, supabaseAnonKey, {
+    const sbClient = window.__BM_SUPABASE_CLIENT__ || supabaseGlobal?.createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         storageKey: "bm_tools_auth_v1",
         lock: authLock
