@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>BM-TikTok Shop TH 项目利润测算器</title>
   <script src="../assets/supabase-umd.js"></script>
-  <script src="../assets/auth-gate.js?v=20260718-signup2"></script>
+  <script src="../assets/auth-gate.js?v=20260724-internal1"></script>
   <style>
     :root {
       --ink: #17212b;
@@ -532,7 +532,6 @@
           <input id="authEmail" type="email" placeholder="邮箱">
           <input id="authPassword" type="password" placeholder="密码">
           <button id="loginBtn">登录</button>
-          <button id="signupBtn">注册</button>
           <button id="cloudSaveBtn">云端保存</button>
           <button id="logoutBtn" style="display:none">退出</button>
           <span class="auth-status" id="authStatus">游客模式</span>
@@ -3110,27 +3109,6 @@
         await loadCloudData(currentUser);
       } catch (err) {
         setAuthStatus(err.message || "登录失败");
-      }
-    };
-    document.getElementById("signupBtn").onclick = async () => {
-      if (!sbClient) return setAuthStatus("云端未启用");
-      const email = document.getElementById("authEmail").value.trim();
-      const password = document.getElementById("authPassword").value;
-      if (!email || !password) return setAuthStatus("请输入邮箱密码");
-      setAuthStatus("注册中...");
-      try {
-        const { data, error } = await withTimeout(sbClient.auth.signUp({ email, password }), "注册超时，请稍后重试。");
-        if (error) {
-          setAuthStatus("注册失败");
-          alert(error.message);
-          return;
-        }
-        currentUser = data.user;
-        updateAuthUi();
-        setAuthStatus(data.session ? "注册成功" : "请查收验证邮件");
-        if (data.session && currentUser) await loadCloudData(currentUser);
-      } catch (err) {
-        setAuthStatus(err.message || "注册失败");
       }
     };
     document.getElementById("logoutBtn").onclick = async () => {
