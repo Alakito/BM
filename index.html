@@ -17,7 +17,7 @@
     }());
   </script>
   <script src="./assets/supabase-umd.js"></script>
-  <script src="./assets/auth-gate.js?v=20260718-signup2"></script>
+  <script src="./assets/auth-gate.js?v=20260724-internal1"></script>
   <style>
     :root {
       --bg: #eef3f8;
@@ -82,6 +82,7 @@
       font-weight: 800;
     }
     .auth-actions, .project-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    #loginBtn { grid-column: 1 / -1; }
     #resetPanel { display: none; gap: 8px; }
     #resetPanel.show { display: grid; }
     button, .ghost {
@@ -181,7 +182,6 @@
         <input id="authPassword" type="password" placeholder="密码">
         <div class="auth-actions">
           <button class="primary" id="loginBtn">登录</button>
-          <button id="signupBtn">注册</button>
         </div>
         <button class="link" id="forgotPasswordBtn">忘记密码 / 重置密码</button>
         <div id="resetPanel">
@@ -459,30 +459,6 @@
       }
     }
 
-    async function signup() {
-      const email = authEmail.value.trim();
-      const password = authPassword.value;
-      if (!email || !password) return setStatus(authStatus, "请输入邮箱和密码");
-      if (!sbClient) return setStatus(authStatus, "登录模块加载失败，请刷新页面。");
-      signupBtn.disabled = true;
-      setStatus(authStatus, "注册中...");
-      try {
-        const { data, error } = await withTimeout(sbClient.auth.signUp({ email, password }), "注册超时，请稍后重试。");
-        if (error) return setStatus(authStatus, `注册失败：${error.message}`);
-        if (data.session?.user) {
-          currentUser = data.session.user;
-          setStatus(authStatus, `${data.session.user.email || "注册成功"}`, true);
-          await loadProjects(true);
-        } else {
-          setStatus(authStatus, "注册成功，请先验证邮箱后登录。");
-        }
-      } catch (err) {
-        setStatus(authStatus, err.message || "注册失败，请稍后重试。");
-      } finally {
-        signupBtn.disabled = false;
-      }
-    }
-
     function resetRedirectUrl() {
       return "https://alakito.github.io/BM/";
     }
@@ -581,11 +557,9 @@
     }
 
     const loginBtn = document.getElementById("loginBtn");
-    const signupBtn = document.getElementById("signupBtn");
     const forgotPasswordBtn = document.getElementById("forgotPasswordBtn");
     const updatePasswordBtn = document.getElementById("updatePasswordBtn");
     loginBtn.addEventListener("click", login);
-    signupBtn.addEventListener("click", signup);
     forgotPasswordBtn.addEventListener("click", sendPasswordReset);
     updatePasswordBtn.addEventListener("click", updatePassword);
     logoutBtn.addEventListener("click", logout);

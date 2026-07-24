@@ -127,9 +127,8 @@
     }
     .bm-auth-error.is-error { color: #dc2626; }
     .bm-auth-error.is-success { color: #15803d; }
-    .bm-auth-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
-    .bm-auth-submit,
-    .bm-auth-signup {
+    .bm-auth-actions { display: grid; grid-template-columns: 1fr; gap: 9px; }
+    .bm-auth-submit {
       height: 44px;
       border-radius: 9px;
       font: inherit;
@@ -138,10 +137,7 @@
     }
     .bm-auth-submit { border: 0; color: #ffffff; background: #5b45e8; }
     .bm-auth-submit:hover { background: #4f3bd1; }
-    .bm-auth-signup { border: 1px solid #c7bff5; color: #4f3bd1; background: #f7f5ff; }
-    .bm-auth-signup:hover { border-color: #8979e9; background: #f0edff; }
-    .bm-auth-submit:disabled,
-    .bm-auth-signup:disabled { cursor: wait; opacity: .65; }
+    .bm-auth-submit:disabled { cursor: wait; opacity: .65; }
     .bm-auth-help {
       display: flex;
       align-items: center;
@@ -206,7 +202,7 @@
   }
 
   function setBusy(busy) {
-    document.querySelectorAll(".bm-auth-submit,.bm-auth-signup,.bm-auth-reset").forEach(button => {
+    document.querySelectorAll(".bm-auth-submit,.bm-auth-reset").forEach(button => {
       button.disabled = busy;
     });
   }
@@ -247,7 +243,7 @@
       <section class="bm-auth-panel" aria-labelledby="bm-auth-title">
         <div class="bm-auth-heading">
           <div class="bm-auth-brand-row"><span class="bm-auth-logo">BM</span><h1 class="bm-auth-brand" id="bm-auth-title">BM 运营工具中心</h1></div>
-          <p class="bm-auth-subtitle">登录已有账号，或直接注册新账号进入老工具箱。</p>
+          <p class="bm-auth-subtitle">仅限已开通的内部账号登录老工具箱。</p>
         </div>
         <form class="bm-auth-form" autocomplete="on">
           <label class="bm-auth-field">
@@ -261,16 +257,14 @@
           <p class="bm-auth-error" role="status" aria-live="polite">正在连接账号服务…</p>
           <div class="bm-auth-actions">
             <button class="bm-auth-submit" type="submit">登录</button>
-            <button class="bm-auth-signup" type="button">注册新账号</button>
           </div>
-          <div class="bm-auth-help"><span>注册成功后会自动进入工具箱</span><button class="bm-auth-reset" type="button">忘记密码？</button></div>
+          <div class="bm-auth-help"><span>新账号由管理员统一开通</span><button class="bm-auth-reset" type="button">忘记密码？</button></div>
         </form>
       </section>
     `;
     document.body.appendChild(gate);
 
     const form = gate.querySelector("form");
-    const signup = gate.querySelector(".bm-auth-signup");
     const reset = gate.querySelector(".bm-auth-reset");
 
     async function credentials() {
@@ -306,28 +300,6 @@
       }
     });
 
-    signup.addEventListener("click", async function () {
-      const values = await credentials();
-      if (!values) return;
-      setBusy(true);
-      setMessage("正在创建账号…");
-      try {
-        const sb = await getClient();
-        const { data, error } = await sb.auth.signUp(values);
-        if (error) throw error;
-        if (data.session) {
-          setMessage("注册成功，正在进入工具箱…", "success");
-          unlock();
-        } else {
-          setMessage("注册成功，请先到邮箱完成验证，然后返回登录。", "success");
-        }
-      } catch (error) {
-        setMessage(`注册失败：${error.message || "请稍后重试。"}`, "error");
-      } finally {
-        setBusy(false);
-      }
-    });
-
     reset.addEventListener("click", async function () {
       const email = form.elements.email.value.trim();
       if (!email) return setMessage("请先填写需要重置密码的邮箱。", "error");
@@ -357,7 +329,7 @@
         if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) unlock();
       });
       if (data.session) unlock();
-      else setMessage("还没有账号？点击“注册新账号”即可创建。", "");
+      else setMessage("请输入管理员已开通的账号。", "");
     } catch (error) {
       setMessage(error.message || "登录服务暂时不可用，请刷新页面重试。", "error");
     }
