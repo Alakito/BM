@@ -771,10 +771,14 @@
       const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: "", raw: false, blankrows: false });
       return { rows, sheetName };
     }
-    function findHeaderIndex(rows, requiredAliases) {
+    function findHeaderIndex(rows, requiredAliasGroups) {
+      const groups = requiredAliasGroups.map(group => Array.isArray(group) ? group : [group]);
       return rows.findIndex(row => {
         const normalized = row.map(normalizeHeaderName).filter(Boolean);
-        return requiredAliases.every(alias => normalized.some(cell => cell.includes(normalizeHeaderName(alias))));
+        return groups.every(group => group.some(alias => {
+          const key = normalizeHeaderName(alias);
+          return normalized.some(cell => cell === key || cell.includes(key) || key.includes(cell));
+        }));
       });
     }
     function findPublishInfoHeaderIndex(rows) {
@@ -967,7 +971,11 @@
     }
     function parseAdCreativeWorkbook(buffer, fileName) {
       const { rows, sheetName } = workbookRowsFromBuffer(buffer);
-      const headerIndex = findHeaderIndex(rows, ["视频ID", "成本", "总收入"]);
+      const headerIndex = findHeaderIndex(rows, [
+        ["视频 ID", "视频ID", "Video ID"],
+        ["成本", "消耗", "Spend", "Cost"],
+        ["总收入", "收入", "Gross Revenue", "Revenue"]
+      ]);
       if (headerIndex < 0) throw new Error("没有找到广告素材表头，请导入 Creatives video data。");
       const headers = rows[headerIndex];
       const reportDate = parseReportDateFromFilename(fileName) || rows.slice(0, headerIndex).map(row => row.map(parseReportDateFromText).find(Boolean)).find(Boolean) || "";
@@ -977,17 +985,17 @@
         if (!videoId) return null;
         const productId = String(recordValue(record, ["商品 ID", "商品ID", "Product ID"])).trim();
         const spend = parseMetric(recordValue(record, ["成本", "消耗", "Spend", "Cost"]));
-        const revenue = parseMetric(recordValue(record, ["总收入", "收入", "Revenue"]));
+        const revenue = parseMetric(recordValue(record, ["总收入", "收入", "Gross Revenue", "Revenue"]));
         const orders = parseMetric(recordValue(record, ["SKU 订单数", "订单数", "SKU Orders"]));
-        const avgOrderCostRaw = recordValue(record, ["平均下单成本", "Average Cost per Order"]);
-        const exposure = parseMetric(recordValue(record, ["商品广告曝光数", "广告曝光数", "曝光", "Impressions"]));
-        const clicks = parseMetric(recordValue(record, ["商品广告点击数", "广告点击数", "点击", "Clicks"]));
+        const avgOrderCostRaw = recordValue(record, ["平均下单成本", "Average Cost per Order", "Cost per Order"]);
+        const exposure = parseMetric(recordValue(record, ["商品广告曝光数", "广告曝光数", "曝光", "Product Ad Impressions", "Ad Impressions", "Impressions"]));
+        const clicks = parseMetric(recordValue(record, ["商品广告点击数", "广告点击数", "点击", "Product Ad Clicks", "Ad Clicks", "Clicks"]));
         const roiRaw = recordValue(record, ["ROI"]);
-        const ctrRaw = recordValue(record, ["商品广告点击率", "广告点击率", "CTR"]);
-        const conversionRaw = recordValue(record, ["广告转化率", "转化率", "Conversion Rate"]);
-        const play2Rate = parseRateMetric(recordValue(record, ["广告视频 2 秒播放率", "2 秒播放率", "2秒播放率"]));
-        const play6Rate = parseRateMetric(recordValue(record, ["广告视频 6 秒播放率", "6 秒播放率", "6秒播放率"]));
-        const publishDate = dateKey(recordValue(record, ["发布时间", "发布日期", "Publish Time"]));
+        const ctrRaw = recordValue(record, ["商品广告点击率", "广告点击率", "Product Ad Click Rate", "Ad Click Rate", "Click Rate", "CTR"]);
+        const conversionRaw = recordValue(record, ["广告转化率", "转化率", "Ad Conversion Rate", "Conversion Rate"]);
+        const play2Rate = parseRateMetric(recordValue(record, ["广告视频 2 秒播放率", "2 秒播放率", "2秒播放率", "2-Second Ad Video View Rate", "2 Second Ad Video View Rate", "2s Ad Video View Rate"]));
+        const play6Rate = parseRateMetric(recordValue(record, ["广告视频 6 秒播放率", "6 秒播放率", "6秒播放率", "6-Second Ad Video View Rate", "6 Second Ad Video View Rate", "6s Ad Video View Rate"]));
+        const publishDate = dateKey(recordValue(record, ["发布时间", "发布日期", "Time Posted", "Posted Time", "Publish Time"]));
         const explicitDate = dateKey(recordExactValue(record, ["时间", "日期", "数据日期", "数据时间", "Date"]));
         return {
           date: explicitDate || reportDate || publishDate || "",
@@ -997,12 +1005,12 @@
           videoId,
           productId,
           product: String(recordValue(record, ["商品名称", "商品", "Product Name", "Product"])).trim(),
-          authType: String(recordValue(record, ["授权类型"])).trim(),
-          authStatus: String(recordValue(record, ["授权状态"])).trim(),
-          tag: String(recordValue(record, ["标签"])).trim(),
-          preAuditStatus: String(recordValue(record, ["预审核状态"])).trim(),
-          source: String(recordValue(record, ["视频来源"])).trim(),
-          currency: String(recordValue(record, ["币种"])).trim(),
+          authType: String(recordValue(record, ["授权类型", "Authorization Type"])).trim(),
+          authStatus: String(recordValue(record, ["授权状态", "Authorization Status"])).trim(),
+          tag: String(recordValue(record, ["标签", "Tag"])).trim(),
+          preAuditStatus: String(recordValue(record, ["预审核状态", "Pre-review Status", "Pre Review Status"])).trim(),
+          source: String(recordValue(record, ["视频来源", "Video Source"])).trim(),
+          currency: String(recordValue(record, ["币种", "Currency"])).trim(),
           spend,
           revenue,
           orders,
