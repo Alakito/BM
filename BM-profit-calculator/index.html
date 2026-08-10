@@ -259,6 +259,36 @@
       max-height: 280px;
       margin-bottom: 10px;
     }
+    #targetProductInputs { min-width: 720px; }
+    #targetProductInputs .product-group-row td {
+      background: #e8f3ee;
+      border-top: 2px solid #b9d8c8;
+      font-weight: 800;
+    }
+    #targetProductInputs .product-group-row td:first-child {
+      color: #174f39;
+    }
+    #targetProductInputs .product-spec-row td:first-child {
+      padding-left: 26px;
+      background: #f7fbf8;
+    }
+    .product-level-label {
+      display: block;
+      margin-top: 2px;
+      color: var(--muted);
+      font-size: 11px;
+      font-weight: 400;
+    }
+    .weight-input-stack {
+      display: grid;
+      gap: 3px;
+    }
+    .final-weight-hint {
+      color: var(--green);
+      font-size: 11px;
+      font-weight: 700;
+      text-align: right;
+    }
     .split {
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -597,11 +627,11 @@
             <div class="scroll compact-scroll">
               <table class="sticky" id="targetChannelInputs"></table>
             </div>
-            <h3 class="subhead">产品 GMV 权重</h3>
+            <h3 class="subhead">产品 GMV 权重（大单品 → 规格）</h3>
             <div class="scroll compact-scroll">
               <table class="sticky" id="targetProductInputs"></table>
             </div>
-            <p class="note">月度、渠道和产品比重均按同组归一化分配，例如 15/35/50 或 0.15/0.35/0.5 都可；渠道 CTR / 点击成交率留空时，默认沿用对应月份目标。</p>
+            <p class="note">先填写大单品占整体 GMV 的比例，再填写各规格在该大单品内部的比例。例如美白片占 80%，其中单片占 60%，最终单片占整体 GMV 的 48%。同组可填 80/20 或 0.8/0.2，系统会自动归一化；渠道 CTR / 点击成交率留空时，默认沿用对应月份目标。</p>
           </div>
         </div>
       </div>
@@ -895,7 +925,8 @@
           { name: "Miraculous/灵光", role: "IP/记忆点款", weights: [0.15, 0.10, 0.10] },
           { name: "AURUM", role: "核心拉动款", weights: [0.25, 0.30, 0.30] },
           { name: "Blue", role: "补充款", weights: [0.15, 0.10, 0.10] }
-        ]
+        ],
+        productGroups: []
       },
       manual: { adSpend: "", creatorBuying: "", fixedOther: "", settlementIncome: "", aov: "", roas: "" }
     };
@@ -1143,6 +1174,11 @@
           if (v !== "" && v != null) p.weights[i] = normalizeRateNumber(v);
         });
       });
+      (next.targetPlan?.productGroups || []).forEach(group => {
+        (group.weights || []).forEach((v, i) => {
+          if (v !== "" && v != null) group.weights[i] = normalizeRateNumber(v);
+        });
+      });
       (next.giftMechanism?.plans || []).forEach(plan => {
         if (plan.utilizationRate !== "" && plan.utilizationRate != null) {
           plan.utilizationRate = normalizeRateNumber(plan.utilizationRate);
@@ -1202,6 +1238,11 @@
     }
     function normalizeShares() {
       const enabled = state.skus.filter(s => s.enabled);
+      const groupedShares = groupedTargetSkuShares();
+      const groupedTotal = enabled.reduce((sum, sku) => sum + num(groupedShares.get(sku.sku)), 0);
+      if (groupedTotal > 0) {
+        return new Map(enabled.map(sku => [sku.sku, num(groupedShares.get(sku.sku)) / groupedTotal]));
+      }
       const total = enabled.reduce((a, s) => a + num(s.salesShare), 0) || 1;
       return new Map(enabled.map(s => [s.sku, num(s.salesShare) / total]));
     }
@@ -2376,6 +2417,7 @@
       if (!Array.isArray(state.targetPlan.months) || !state.targetPlan.months.length) state.targetPlan.months = structuredClone(defaultState.targetPlan.months);
       if (!Array.isArray(state.targetPlan.channels) || !state.targetPlan.channels.length) state.targetPlan.channels = structuredClone(defaultState.targetPlan.channels);
       if (!Array.isArray(state.targetPlan.products)) state.targetPlan.products = [];
+      if (!Array.isArray(state.targetPlan.productGroups)) state.targetPlan.productGroups = [];
       return state.targetPlan;
     }
     function skuProductKey(s, i) {
@@ -2384,18 +2426,60 @@
     function skuProductName(s, i) {
       return String(s?.name || s?.sku || `SKU${String(i + 1).padStart(3, "0")}`).trim();
     }
+    function productFamilyName(value) {
+      const text = String(value || "").trim();
+      if (!text) return "未分组产品";
+      const spaced = text.match(/^(.+?)\s+(?=\d+\s*(?:pc|pcs|strip|strips|片|盒|瓶|袋|包|支|粒|条))/i);
+      if (spaced?.[1]) return spaced[1].trim();
+      const compact = text.match(/^(.+?)(?=\d+\s*(?:pc|pcs|strip|strips|片|盒|瓶|袋|包|支|粒|条))/i);
+      return compact?.[1]?.trim() || text;
+    }
+    function displayWeight(value) {
+      if (value === "" || value == null) return "";
+      return Number(num(value).toFixed(4));
+    }
     function syncTargetProductsFromSkus(plan) {
+      const groupedMode = plan.productWeightMode === "grouped-v1";
       const existingByKey = new Map((plan.products || []).map(p => [String(p.sku || p.key || p.name || "").trim(), p]));
       const existingByName = new Map((plan.products || []).map(p => [String(p.name || "").trim(), p]));
       const skuProducts = (state.skus || [])
+        .filter(s => s.enabled !== false)
         .map((s, i) => ({ key: skuProductKey(s, i), name: skuProductName(s, i) }))
         .filter(p => p.key || p.name);
-      plan.products = skuProducts.map((p, i) => {
+      const products = skuProducts.map(p => {
         const old = existingByKey.get(p.key) || existingByName.get(p.name) || {};
         const weights = plan.months.map((_, mi) => old.weights?.[mi] ?? 0);
-        return { sku: p.key, name: p.name, role: old.role || "", weights };
+        return { sku: p.key, name: p.name, group: old.group || productFamilyName(p.name), weights };
       });
-      return plan.products;
+      const groupNames = [...new Set(products.map(product => product.group))];
+      const existingGroups = new Map((plan.productGroups || []).map(group => [String(group.name || "").trim(), group]));
+      let productGroups;
+      if (!groupedMode) {
+        const legacyTotals = plan.months.map((_, mi) => products.reduce((sum, product) => sum + num(product.weights?.[mi]), 0));
+        productGroups = groupNames.map(name => {
+          const members = products.filter(product => product.group === name);
+          const weights = plan.months.map((_, mi) => {
+            const groupTotal = members.reduce((sum, product) => sum + num(product.weights?.[mi]), 0);
+            return legacyTotals[mi] > 0 ? groupTotal / legacyTotals[mi] : (groupNames.length ? 1 / groupNames.length : 0);
+          });
+          plan.months.forEach((_, mi) => {
+            const groupTotal = members.reduce((sum, product) => sum + num(product.weights?.[mi]), 0);
+            members.forEach(product => {
+              product.weights[mi] = groupTotal > 0 ? num(product.weights?.[mi]) / groupTotal : (members.length ? 1 / members.length : 0);
+            });
+          });
+          return { name, weights };
+        });
+      } else {
+        productGroups = groupNames.map(name => {
+          const old = existingGroups.get(name) || {};
+          return { name, weights: plan.months.map((_, mi) => old.weights?.[mi] ?? 0) };
+        });
+      }
+      plan.products = products;
+      plan.productGroups = productGroups;
+      plan.productWeightMode = "grouped-v1";
+      return { products, groups: productGroups };
     }
     function normalizedWeight(raw, total, count) {
       if (total > 0) return num(raw) / total;
@@ -2432,13 +2516,36 @@
       });
       return totalWeight > 0 ? weightedAov / totalWeight : 0;
     }
+    function groupedTargetSkuShares() {
+      const plan = getTargetPlan();
+      const { products, groups } = syncTargetProductsFromSkus(plan);
+      const shares = new Map(products.map(product => [product.sku, 0]));
+      if (!products.length || !groups.length || !plan.months.length) return shares;
+      const legacyMonthTotal = plan.months.reduce((sum, month) => sum + num(month.gmv), 0);
+      const rawMonthWeights = plan.months.map(month => monthWeightValue(month, legacyMonthTotal));
+      const monthWeightTotal = rawMonthWeights.reduce((sum, value) => sum + num(value), 0);
+      const groupTotals = plan.months.map((_, mi) => groups.reduce((sum, group) => sum + num(group.weights?.[mi]), 0));
+      plan.months.forEach((_, mi) => {
+        const monthShare = normalizedWeight(rawMonthWeights[mi], monthWeightTotal, plan.months.length);
+        groups.forEach(group => {
+          const members = products.filter(product => product.group === group.name);
+          const memberTotal = members.reduce((sum, product) => sum + num(product.weights?.[mi]), 0);
+          const groupShare = normalizedWeight(group.weights?.[mi], groupTotals[mi], groups.length);
+          members.forEach(product => {
+            const specShare = normalizedWeight(product.weights?.[mi], memberTotal, members.length);
+            shares.set(product.sku, num(shares.get(product.sku)) + monthShare * groupShare * specShare);
+          });
+        });
+      });
+      return shares;
+    }
     function targetProductAov(product) {
       const sku = (state.skus || []).find(s => skuProductKey(s, 0) === product.sku || s.sku === product.sku || s.name === product.name);
       return targetSkuAov(sku);
     }
     function computeTargetPlan() {
       const plan = getTargetPlan();
-      const targetProducts = syncTargetProductsFromSkus(plan);
+      const { products: targetProducts, groups: targetGroups } = syncTargetProductsFromSkus(plan);
       const legacyMonthTotal = plan.months.reduce((sum, m) => sum + num(m.gmv), 0);
       const totalTargetGmv = num(state.project?.gmv);
       const rawMonthWeights = plan.months.map(m => monthWeightValue(m, legacyMonthTotal));
@@ -2454,16 +2561,22 @@
       });
       const productRows = [];
       const productMonthOrders = months.map(() => 0);
-      const productWeightTotals = months.map((m, mi) => targetProducts.reduce((sum, p) => sum + num(p.weights?.[mi]), 0));
       const productAovs = targetProducts.map(p => targetProductAov(p));
-      targetProducts.forEach((p, pi) => {
+      const groupWeightTotals = months.map((m, mi) => targetGroups.reduce((sum, group) => sum + num(group.weights?.[mi]), 0));
+      targetGroups.forEach((group, groupIndex) => {
+        const members = targetProducts.map((product, productIndex) => ({ product, productIndex })).filter(item => item.product.group === group.name);
         months.forEach((m, mi) => {
-          const weight = normalizedWeight(p.weights?.[mi], productWeightTotals[mi], targetProducts.length);
-          const gmv = m.gmv * weight;
-          const aov = productAovs[pi] || 0;
-          const orders = aov > 0 ? gmv / aov : 0;
-          productMonthOrders[mi] += orders;
-          productRows.push({ productIndex: pi, monthIndex: mi, month: m.name, product: p.name, role: p.role, weight, gmv, aov, orders });
+          const groupWeight = normalizedWeight(group.weights?.[mi], groupWeightTotals[mi], targetGroups.length);
+          const specWeightTotal = members.reduce((sum, item) => sum + num(item.product.weights?.[mi]), 0);
+          members.forEach(({ product, productIndex }) => {
+            const specWeight = normalizedWeight(product.weights?.[mi], specWeightTotal, members.length);
+            const weight = groupWeight * specWeight;
+            const gmv = m.gmv * weight;
+            const aov = productAovs[productIndex] || 0;
+            const orders = aov > 0 ? gmv / aov : 0;
+            productMonthOrders[mi] += orders;
+            productRows.push({ groupIndex, productIndex, monthIndex: mi, month: m.name, group: group.name, product: product.name, groupWeight, specWeight, weight, gmv, aov, orders });
+          });
         });
       });
       months.forEach((m, mi) => {
@@ -2493,7 +2606,7 @@
           channelRows.push({ channelIndex: ci, monthIndex: mi, month: m.name, channel: ch.name, role: ch.role, share, gmv, aov: m.aov, ctr, clickOrder, orders, clicks, exposure, budget });
         });
       });
-      return { plan, months, monthTotals, channelRows, productRows, targetProducts };
+      return { plan, months, monthTotals, channelRows, productRows, targetProducts, targetGroups };
     }
     function renderTargetPlan() {
       const t = computeTargetPlan();
@@ -2537,12 +2650,23 @@
           <td class="input-cell">${input(ch.clickOrderRate ?? "", `targetPlan.channels.${i}.clickOrderRate`)}</td>
         </tr>`).join("");
 
-      document.getElementById("targetProductInputs").innerHTML = `<tr><th>单品（来自 SKU 数据）</th><th>角色定位</th>${t.months.map(m => `<th class="num">${m.name}权重</th>`).join("")}</tr>` +
-        (t.targetProducts.length ? t.targetProducts.map((p, i) => `<tr>
-          <td class="calc-cell">${p.name}</td>
-          <td class="input-cell">${input(p.role, `targetPlan.products.${i}.role`, "text")}</td>
-          ${t.months.map((m, mi) => `<td class="input-cell">${input(p.weights?.[mi] ?? 0, `targetPlan.products.${i}.weights.${mi}`)}</td>`).join("")}
-        </tr>`).join("") : `<tr><td colspan="${2 + t.months.length}" class="calc-cell center">请先在“SKU 数据”页录入 SKU，产品权重会自动带出。</td></tr>`);
+      const productInputRows = t.targetGroups.flatMap((group, groupIndex) => {
+        const members = t.targetProducts.map((product, productIndex) => ({ product, productIndex })).filter(item => item.product.group === group.name);
+        const groupRow = `<tr class="product-group-row">
+          <td>${escapeHtml(group.name)}<span class="product-level-label">大单品占整体 GMV</span></td>
+          ${t.months.map((m, mi) => `<td class="input-cell">${input(displayWeight(group.weights?.[mi] ?? 0), `targetPlan.productGroups.${groupIndex}.weights.${mi}`)}</td>`).join("")}
+        </tr>`;
+        const specRows = members.map(({ product, productIndex }) => `<tr class="product-spec-row">
+          <td>↳ ${escapeHtml(product.name)}<span class="product-level-label">该规格占“${escapeHtml(group.name)}”内部份额</span></td>
+          ${t.months.map((m, mi) => {
+            const result = t.productRows.find(row => row.productIndex === productIndex && row.monthIndex === mi);
+            return `<td class="input-cell"><div class="weight-input-stack">${input(displayWeight(product.weights?.[mi] ?? 0), `targetPlan.products.${productIndex}.weights.${mi}`)}<span class="final-weight-hint">最终占整体 ${pct(result?.weight || 0)}</span></div></td>`;
+          }).join("")}
+        </tr>`).join("");
+        return groupRow + specRows;
+      }).join("");
+      document.getElementById("targetProductInputs").innerHTML = `<tr><th>大单品 / 规格</th>${t.months.map(m => `<th class="num">${m.name}占比</th>`).join("")}</tr>` +
+        (productInputRows || `<tr><td colspan="${1 + t.months.length}" class="calc-cell center">请先在“SKU 数据”页录入并启用 SKU，系统会自动按产品名称归组。</td></tr>`);
 
       document.getElementById("targetMonthlyResult").innerHTML = `<tr><th>月份</th><th>阶段</th><th class="num">GMV目标</th><th class="num">AOV</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">广告后台ROI</th><th class="num">后台广告预算</th></tr>` +
         t.months.map(m => `<tr><td>${m.name}</td><td>${m.stage}</td><td class="num">${money(m.gmv)}</td><td class="num">${money(m.aov)}</td><td class="num">${money0.format(m.orders)}</td><td class="num">${pct(m.ctr)}</td><td class="num">${pct(m.clickOrder)}</td><td class="num">${money0.format(m.clicks)}</td><td class="num">${money0.format(m.exposure)}</td><td class="num">${ratio(m.roi)}</td><td class="num">${money(m.budget)}</td></tr>`).join("") +
@@ -2551,8 +2675,8 @@
       document.getElementById("targetChannelResult").innerHTML = `<tr><th>月份</th><th>渠道</th><th>角色</th><th class="num">GMV占比</th><th class="num">GMV目标</th><th class="num">订单目标</th><th class="num">曝光点击率CTR</th><th class="num">点击成交率</th><th class="num">点击目标</th><th class="num">曝光目标</th><th class="num">后台预算参考</th></tr>` +
         t.channelRows.map(r => `<tr><td>${r.month}</td><td>${r.channel}</td><td>${r.role}</td><td class="num">${pct(r.share)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money0.format(r.orders)}</td><td class="num">${pct(r.ctr)}</td><td class="num">${pct(r.clickOrder)}</td><td class="num">${money0.format(r.clicks)}</td><td class="num">${money0.format(r.exposure)}</td><td class="num">${money(r.budget)}</td></tr>`).join("");
 
-      document.getElementById("targetProductResult").innerHTML = `<tr><th>月份</th><th>单品</th><th>角色</th><th class="num">GMV权重</th><th class="num">GMV目标</th><th class="num">自动AOV</th><th class="num">订单/销量目标</th></tr>` +
-        (t.productRows.length ? t.productRows.map(r => `<tr><td>${r.month}</td><td>${r.product}</td><td>${r.role}</td><td class="num">${pct(r.weight)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money(r.aov)}</td><td class="num">${money0.format(r.orders)}</td></tr>`).join("") : `<tr><td colspan="7" class="calc-cell center">请先在“SKU 数据”页录入 SKU。</td></tr>`);
+      document.getElementById("targetProductResult").innerHTML = `<tr><th>月份</th><th>大单品</th><th>规格</th><th class="num">大单品占比</th><th class="num">组内规格占比</th><th class="num">最终GMV权重</th><th class="num">GMV目标</th><th class="num">自动AOV</th><th class="num">订单/销量目标</th></tr>` +
+        (t.productRows.length ? t.productRows.map(r => `<tr><td>${r.month}</td><td>${escapeHtml(r.group)}</td><td>${escapeHtml(r.product)}</td><td class="num">${pct(r.groupWeight)}</td><td class="num">${pct(r.specWeight)}</td><td class="num">${pct(r.weight)}</td><td class="num">${money(r.gmv)}</td><td class="num">${money(r.aov)}</td><td class="num">${money0.format(r.orders)}</td></tr>`).join("") : `<tr><td colspan="9" class="calc-cell center">请先在“SKU 数据”页录入并启用 SKU。</td></tr>`);
     }
     function formatMixed(v) {
       if (v === null || v === undefined) return "不可达";
