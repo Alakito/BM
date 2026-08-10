@@ -608,6 +608,11 @@
             <h2>项目基础输入</h2>
             <div class="panel-body">
               <table id="projectInputs"></table>
+              <h3 class="subhead">SKU 订单成本反推</h3>
+              <p class="note">系统先按大单品与规格权重拆分 GMV，再用各 SKU 到手价推算订单；货品成本按“有效订单（扣退货） × 每单件数 × 到仓成本”计算。额外达人寄样请在上方单独填写。</p>
+              <div class="scroll compact-scroll">
+                <table id="skuCostBreakdown"></table>
+              </div>
             </div>
           </div>
         </div>
@@ -1647,7 +1652,7 @@
       const agency = num(p.gmv) * num(p.agencyRate);
       const adSpend = num(p.adSpend);
       const creatorBuying = num(p.creatorBuying);
-      const sampleCost = num(p.gmv) * num(p.sampleCostRate);
+      const sampleCost = num(p.sampleCost);
       const otherCost = num(p.otherCost);
       const totalCost = adSpend + platformFee + creatorCommission + cogs + logistics + loss + creatorBuying + agency + sampleCost + otherCost;
       const profit = settlementIncome - totalCost;
@@ -1697,7 +1702,8 @@
       renderKpis(summary);
       renderSummary(summary);
       renderCosts(summary);
-      renderInputs();
+      renderInputs(summary);
+      renderSkuCostBreakdown(summary.rows);
       renderSku();
       renderRules();
       renderDetails(summary.rows);
@@ -1733,7 +1739,7 @@
         ["当前后台广告ROAS", s.backendRoas, "", "后台GMV / 广告费"],
         ["当前有效广告ROAS", s.effectiveRoas, "", "有效用户实付GMV / 广告费"],
         ["项目总ROI", s.totalRoi, "", "结算收入 / 总成本"],
-        ["项目营销ROI", s.marketingRoi, "", "结算收入 /（广告+达人采买+样品）"],
+        ["项目营销ROI", s.marketingRoi, "", "结算收入 /（广告+达人采买+额外寄样）"],
         ["固定广告费口径-保本后台ROAS", s.fixedAdBreakevenRoas, "", "广告费不变，提高ROAS带来增长"],
         ["目标ROI所需后台ROAS", s.targetRequiredRoas, "", "GMV固定预算口径"],
         ["安全状态", s.status, "", "项目整体状态"]
@@ -1751,20 +1757,19 @@
         ["货损成本", s.loss],
         ["达人采买费用", s.creatorBuying],
         ["代运营服务费", s.agency],
-        ["样品成本", s.sampleCost],
+        ["额外达人寄样成本", s.sampleCost],
         ["其他费用", s.otherCost]
       ];
       const max = Math.max(...costs.map(r => r[1]), 1);
       document.getElementById("costTable").innerHTML = `<tr><th>成本项</th><th class="num">金额</th><th class="num">占结算收入</th><th>结构</th></tr>` +
         costs.map(([name, value]) => `<tr><td>${name}</td><td class="num">${money(value)}</td><td class="num">${pct(value / s.settlementIncome)}</td><td><div class="bar"><span style="width:${Math.min(100, value / max * 100)}%"></span></div></td></tr>`).join("");
     }
-    function renderInputs() {
-      const p = state.project;
+    function renderInputs(summary) {
       const fields = [
         ["项目名称", "project.name", "text"], ["测算周期", "project.period", "text"],
         ["项目目标GMV/用户实付GMV", "project.gmv"], ["目标项目ROI", "project.targetROI"],
         ["退货率（小数，如25%=0.25）", "project.returnRate"], ["后台广告ROAS对应广告费", "project.adSpend"],
-        ["达人采买费用（含内容）", "project.creatorBuying"], ["样品成本率（按GMV，小数，如2%=0.02）", "project.sampleCostRate"], ["自动样品成本", "__sampleCostAmount", "calc"],
+        ["达人采买费用（含内容）", "project.creatorBuying"], ["自动货品成本（按SKU订单反推）", "__skuCostAmount", "calc"], ["额外达人寄样成本（手填）", "project.sampleCost"],
         ["其他费用", "project.otherCost"], ["代运营服务费率（小数）", "project.agencyRate"],
         ["物流费率（小数）", "project.logisticsRate"], ["货损率（小数）", "project.lossRate"],
         ["平台基础设施费/单", "project.platformInfraPerOrder"], ["平台类目佣金率（小数）", "project.platformCommissionRate"],
@@ -1775,11 +1780,53 @@
       ];
       document.getElementById("projectInputs").innerHTML = `<tr><th>字段</th><th>值</th></tr>` +
         fields.map(([label, path, type = "number"]) => {
-          if (type === "calc") return `<tr><td>${label}</td><td class="calc-cell num">${money(num(p.gmv) * num(p.sampleCostRate))}</td></tr>`;
+          if (type === "calc") return `<tr><td>${label}</td><td class="calc-cell num">${money(summary.cogs)}</td></tr>`;
           return `<tr><td>${label}</td><td class="input-cell">${input(pathGet(path), path, type)}</td></tr>`;
         }).join("");
       document.getElementById("scenarioInputs").innerHTML = `<tr><th>场景</th><th>GMV占比（小数，如25%=0.25）</th></tr>` +
         scenarios.map(sc => `<tr><td>${sc}</td><td class="input-cell">${input(state.scenarioShares[sc], `scenarioShares.${sc}`)}</td></tr>`).join("");
+    }
+    function renderSkuCostBreakdown(rows) {
+      const bySku = new Map();
+      rows.forEach(row => {
+        const key = row.skuRef || row.sku || row.name;
+        const current = bySku.get(key) || {
+          sku: row.sku,
+          name: row.name,
+          orders: 0,
+          effectiveOrders: 0,
+          effectiveUnits: 0,
+          unitPerOrder: 0,
+          unitCost: 0,
+          cogs: 0
+        };
+        current.orders += num(row.orders);
+        current.effectiveOrders += num(row.effectiveOrders);
+        current.effectiveUnits += num(row.effectiveUnits);
+        current.cogs += num(row.cogs);
+        bySku.set(key, current);
+      });
+      bySku.forEach(item => {
+        const sku = state.skus.find(candidate => candidate.sku === item.sku && candidate.enabled);
+        item.unitPerOrder = num(sku?.unitPerOrder);
+        item.unitCost = num(sku?.cost);
+      });
+      const items = [...bySku.values()].sort((a, b) => b.cogs - a.cogs);
+      const totals = items.reduce((sum, item) => {
+        sum.orders += item.orders;
+        sum.effectiveOrders += item.effectiveOrders;
+        sum.effectiveUnits += item.effectiveUnits;
+        sum.cogs += item.cogs;
+        return sum;
+      }, { orders: 0, effectiveOrders: 0, effectiveUnits: 0, cogs: 0 });
+      document.getElementById("skuCostBreakdown").innerHTML = `<tr>
+        <th>SKU / 规格</th><th class="num">预计订单</th><th class="num">有效订单</th><th class="num">每单件数</th><th class="num">有效件数</th><th class="num">到仓成本/件</th><th class="num">货品成本</th></tr>` +
+        items.map(item => `<tr>
+          <td><strong>${item.name || item.sku}</strong><div class="note">${item.sku || ""}</div></td>
+          <td class="num">${money(item.orders)}</td><td class="num">${money(item.effectiveOrders)}</td><td class="num">${money(item.unitPerOrder)}</td>
+          <td class="num">${money(item.effectiveUnits)}</td><td class="num">${money(item.unitCost)}</td><td class="num">${money(item.cogs)}</td>
+        </tr>`).join("") +
+        `<tr class="calc-cell"><td><strong>合计</strong></td><td class="num">${money(totals.orders)}</td><td class="num">${money(totals.effectiveOrders)}</td><td></td><td class="num">${money(totals.effectiveUnits)}</td><td></td><td class="num"><strong>${money(totals.cogs)}</strong></td></tr>`;
     }
     function renderSku() {
       document.getElementById("skuTable").innerHTML = `<tr>
@@ -2387,7 +2434,7 @@
       const rows = [
         ["广告投流费用", s.adSpend, "运营可控", "控制预算、提升ROAS、优化投放结构"],
         ["达人采买费用", s.creatorBuying, "运营可控", "调整KOL/KOC/爆品包预算和投产效率"],
-        ["样品+其他费用", s.sampleCost + s.otherCost, "运营可控", "压缩固定费用"],
+        ["额外寄样+其他费用", s.sampleCost + s.otherCost, "运营可控", "压缩固定费用"],
         ["平台扣费", s.platformFee, "不可控", "平台费率不能调，只能通过价格/优惠/SKU结构间接改善"],
         ["货品成本", s.cogs, "不可控", "物值/到仓成本默认不作为运营优化项"],
         ["代运营服务费", s.agency, "不可控", "默认GMV 10%，不作为优化项"]
@@ -2399,7 +2446,7 @@
       const manualRows = [
         ["降低广告投流费用", s.adSpend, "manual.adSpend", "填调整后的广告费"],
         ["降低达人采买费用", s.creatorBuying, "manual.creatorBuying", "填调整后的达人采买"],
-        ["压缩样品+其他费用", s.sampleCost + s.otherCost, "manual.fixedOther", "填调整后的固定杂费"],
+        ["压缩额外寄样+其他费用", s.sampleCost + s.otherCost, "manual.fixedOther", "填调整后的固定杂费"],
         ["提升结算收入/少让利", s.settlementIncome, "manual.settlementIncome", "填目标结算收入"],
         ["每单到手价需提升", s.aov, "manual.aov", "填目标综合AOV"],
         ["固定广告费口径提升ROAS", s.backendRoas, "manual.roas", "填目标后台ROAS"]
