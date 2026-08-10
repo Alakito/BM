@@ -584,6 +584,16 @@
     </div>
 
     <section id="dashboard" class="view active">
+      <div class="panel" style="margin-bottom:14px">
+        <h2>共资券口径对比</h2>
+        <div class="panel-body">
+          <div class="actions" id="cofundModeActions" style="margin-bottom:10px"></div>
+          <p class="note" id="cofundModeNote"></p>
+          <div class="scroll compact-scroll">
+            <table id="cofundComparisonTable"></table>
+          </div>
+        </div>
+      </div>
       <div class="kpis" id="kpis"></div>
       <div class="grid two">
         <div class="panel">
@@ -868,6 +878,7 @@
         returnProcessCost: 0,
         adSpend: 0,
         creatorBuying: 0,
+        cofundMode: "with",
         sampleCostRate: 0,
         sampleCost: 0,
         otherCost: 0,
@@ -1138,6 +1149,7 @@
     function normalizeRateLikeFields(data) {
       const next = data || structuredClone(defaultState);
       const p = next.project || {};
+      p.cofundMode = p.cofundMode === "without" ? "without" : "with";
       [
         "returnRate", "nonResaleReturnRate", "sampleCostRate", "agencyRate", "logisticsRate", "lossRate",
         "platformCommissionRate", "transactionRate", "commerceGrowthRate", "bcdFlashRate",
@@ -1258,8 +1270,11 @@
     function effectiveStoreCoupon(sku, scene) {
       return Math.max(num(state.storeCoupon.newUser), num(sku.coupons?.[scene]));
     }
-    function matchCofund(sku, scene) {
-      if (!sku.cofund || scene !== "大促") return null;
+    function cofundModeEnabled() {
+      return state.project?.cofundMode !== "without";
+    }
+    function matchCofund(sku, scene, enabled = cofundModeEnabled()) {
+      if (!enabled || !sku.cofund || scene !== "大促") return null;
       let best = null;
       for (const rule of state.cofundRules) {
         if (rule.scene !== "大促") continue;
@@ -1271,7 +1286,7 @@
       }
       return best;
     }
-    function matchCofundByAmount(amount, scene, enabled = true) {
+    function matchCofundByAmount(amount, scene, enabled = cofundModeEnabled()) {
       if (!enabled || scene !== "大促") return null;
       let best = null;
       for (const rule of state.cofundRules) {
@@ -1346,7 +1361,7 @@
       plan.sku = sku?.sku || "";
       plan.skuName = sku?.name || "";
     }
-    function computeDetails() {
+    function computeDetails({ cofundEnabled = cofundModeEnabled() } = {}) {
       const shares = normalizeShares();
       const rows = [];
       const p = state.project;
@@ -1357,7 +1372,7 @@
           const sceneGMV = num(p.gmv) * skuShare * sceneShare;
           const storeCoupon = effectiveStoreCoupon(sku, scene);
           const afterStore = Math.max(0, num(sku.listPrice) - storeCoupon);
-          const cofund = matchCofund(sku, scene);
+          const cofund = matchCofund(sku, scene, cofundEnabled);
           const userCofund = cofund ? cofund.userDiscount : 0;
           const merchantCofund = userCofund * (cofund ? num(cofund.merchantShare) : 0);
           const platformSubsidyPerUnit = userCofund * (cofund ? num(cofund.platformShare) : 0);
@@ -1484,7 +1499,7 @@
         const scene = scenarios.includes(plan.scene) ? plan.scene : "日常";
         const detailRow = detailRows.find(row => row.skuRef === giftSkuRef(sku) && row.scene === scene);
         if (!detailRow) return null;
-        const cofundEnabled = plan.cofund !== false;
+        const cofundEnabled = plan.cofund !== false && cofundModeEnabled();
         const userPayPerUnit = cofundEnabled ? detailRow.userPay : detailRow.afterStore;
         const settlementPerUnit = cofundEnabled ? detailRow.settlementPerUnit : detailRow.afterStore;
         const unitsPerOrder = Math.max(1, num(sku.unitPerOrder, 1));
@@ -1577,7 +1592,7 @@
         const activeStoreDiscount = Math.max(productCouponTotal, fullReduction);
         const activeStoreType = activeStoreDiscount === 0 ? "无店铺券" : (fullReduction > productCouponTotal ? "满减券" : "商品券");
         const afterStore = Math.max(0, listTotal - activeStoreDiscount);
-        const cofund = matchCofundByAmount(listTotal, scene, deal.cofund);
+        const cofund = matchCofundByAmount(listTotal, scene, deal.cofund && cofundModeEnabled());
         const userCofund = cofund ? cofund.userDiscount : 0;
         const merchantCofund = userCofund * (cofund ? num(cofund.merchantShare) : 0);
         const platformSubsidy = userCofund * (cofund ? num(cofund.platformShare) : 0);
@@ -1635,8 +1650,8 @@
       }
       return rows;
     }
-    function computeSummary() {
-      const rows = computeDetails();
+    function computeSummary(options = {}) {
+      const rows = computeDetails(options);
       const p = state.project;
       const sum = key => rows.reduce((a, r) => a + num(r[key]), 0);
       const settlementIncome = sum("settlementIncome");
@@ -1698,7 +1713,10 @@
       return { income, totalCost, profit, profitDelta: profit - summary.profit, roi: totalCost ? income / totalCost : 0, status: profit > 0 ? "盈利" : profit === 0 ? "持平" : "亏损" };
     }
     function render() {
-      const summary = computeSummary();
+      const withCofund = computeSummary({ cofundEnabled: true });
+      const withoutCofund = computeSummary({ cofundEnabled: false });
+      const summary = cofundModeEnabled() ? withCofund : withoutCofund;
+      renderCofundComparison(withCofund, withoutCofund);
       renderKpis(summary);
       renderSummary(summary);
       renderCosts(summary);
@@ -1714,6 +1732,44 @@
       renderOptimization(summary);
       renderTargetPlan();
       bindInputs();
+    }
+    function renderCofundComparison(withCofund, withoutCofund) {
+      const activeMode = cofundModeEnabled() ? "with" : "without";
+      document.getElementById("cofundModeActions").innerHTML = `
+        <strong>当前整套测算：</strong>
+        <button class="small ${activeMode === "with" ? "primary" : ""}" data-cofund-mode="with">使用共资券</button>
+        <button class="small ${activeMode === "without" ? "primary" : ""}" data-cofund-mode="without">不使用共资券</button>`;
+      document.getElementById("cofundModeNote").textContent = activeMode === "with"
+        ? "当前总览、成本、SKU订单、目标拆解及活动测算均按共资券口径联动；下表同时展示不使用共资券时的另一套结果。"
+        : "当前总览、成本、SKU订单、目标拆解及活动测算均不计共资券；店铺券仍然保留。下表同时展示使用共资券时的另一套结果。";
+      const rows = [
+        ["项目目标GMV", withCofund.gmv, withoutCofund.gmv, "money"],
+        ["平台共资补贴", withCofund.platformSubsidy, withoutCofund.platformSubsidy, "money"],
+        ["补贴 / 目标GMV", withCofund.gmv ? withCofund.platformSubsidy / withCofund.gmv : 0, 0, "pct"],
+        ["有效订单数", withCofund.effectiveOrders, withoutCofund.effectiveOrders, "number"],
+        ["综合AOV", withCofund.aov, withoutCofund.aov, "money"],
+        ["结算收入", withCofund.settlementIncome, withoutCofund.settlementIncome, "money"],
+        ["货品成本", withCofund.cogs, withoutCofund.cogs, "money"],
+        ["品牌方总成本", withCofund.totalCost, withoutCofund.totalCost, "money"],
+        ["品牌方净利润", withCofund.profit, withoutCofund.profit, "money"],
+        ["项目总ROI", withCofund.totalRoi, withoutCofund.totalRoi, "ratio"]
+      ];
+      const formatValue = (value, type) => type === "pct" ? pct(value) : type === "ratio" ? ratio(value) : type === "number" ? money0.format(value) : money(value);
+      document.getElementById("cofundComparisonTable").innerHTML = `<tr><th>对比指标</th><th class="num">使用共资券</th><th class="num">不使用共资券</th><th class="num">不使用后的变化</th></tr>` +
+        rows.map(([label, withValue, withoutValue, type]) => {
+          const delta = withoutValue - withValue;
+          const deltaText = `${delta > 0 ? "+" : ""}${formatValue(delta, type)}`;
+          return `<tr><td>${label}</td><td class="num ${activeMode === "with" ? "calc-cell" : ""}">${formatValue(withValue, type)}</td><td class="num ${activeMode === "without" ? "calc-cell" : ""}">${formatValue(withoutValue, type)}</td><td class="num">${deltaText}</td></tr>`;
+        }).join("");
+      document.querySelectorAll("[data-cofund-mode]").forEach(button => {
+        button.onclick = () => {
+          const mode = button.dataset.cofundMode === "without" ? "without" : "with";
+          if (state.project.cofundMode === mode) return;
+          state.project.cofundMode = mode;
+          saveState();
+          render();
+        };
+      });
     }
     function renderKpis(s) {
       const kpis = [
@@ -1964,12 +2020,13 @@
     }
     function renderUnitSpace(rows) {
       const unitState = unitSpaceState();
+      const globalCofundEnabled = cofundModeEnabled();
       const escapedSearch = String(unitState.search || "").replaceAll('"', "&quot;");
       document.getElementById("unitSpaceControls").innerHTML = `<div class="analysis-filters">
         <label class="search-filter">搜索 SKU / 产品 / 活动 / 共资券<input id="unitSpaceSearch" type="search" value="${escapedSearch}" placeholder="输入关键词筛选"></label>
         <label>场景<select id="unitSpaceSceneFilter">${["全部", "日常", "小促", "大促"].map(v => `<option ${v === unitState.sceneFilter ? "selected" : ""}>${v}</option>`).join("")}</select></label>
         <label>空间状态<select id="unitSpaceStatusFilter">${["全部", "空间充足", "空间偏窄", "不可投"].map(v => `<option ${v === unitState.statusFilter ? "selected" : ""}>${v}</option>`).join("")}</select></label>
-        <label class="toggle-filter"><input id="unitSpaceCofundToggle" type="checkbox" ${unitState.cofundEnabled ? "checked" : ""}>参与共资券测算</label>
+        <label class="toggle-filter"><input id="unitSpaceCofundToggle" type="checkbox" ${globalCofundEnabled && unitState.cofundEnabled ? "checked" : ""} ${globalCofundEnabled ? "" : "disabled"}>${globalCofundEnabled ? "参与共资券测算" : "全局已关闭共资券"}</label>
         <span class="note" id="unitSpaceResultCount"></span>
       </div>`;
       renderUnitSpaceTable(rows);
