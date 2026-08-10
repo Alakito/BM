@@ -556,6 +556,7 @@
         <label class="file-label" for="importJson">导入参数</label>
         <input id="importJson" type="file" accept="application/json">
         <button id="exportCsv">导出明细CSV</button>
+        <button class="primary" id="exportWorkbook">导出完整测算Excel</button>
         <button class="primary" id="editSaveBtn">编辑数据</button>
         <button class="danger" id="resetData">恢复空白模板</button>
         <div class="auth-box">
@@ -3105,6 +3106,360 @@
       const date = new Date().toISOString().slice(0, 10);
       XLSX.writeFile(workbook, `BM-活动机制测算-${safeProjectName}-${date}.xlsx`);
     }
+    function exportFullProfitWorkbook() {
+      if (typeof XLSX === "undefined") return alert("Excel 组件尚未加载，请刷新页面后重试。");
+      const projectName = String(state.project?.name || "未命名项目").trim() || "未命名项目";
+      const safeProjectName = projectName.replace(/[\\/:*?"<>|]/g, "-");
+      const exportDate = new Date().toISOString().slice(0, 10);
+      const summaryWith = computeSummary({ cofundEnabled: true });
+      const summaryWithout = computeSummary({ cofundEnabled: false });
+      const detailsWith = summaryWith.rows;
+      const detailsWithout = summaryWithout.rows;
+      const normalizedSkuShares = normalizeShares();
+      const exportSkus = state.skus.length ? state.skus : [{
+        sku: "SKU001", name: "待填写 SKU", enabled: true, originalPrice: 0, listPrice: 0,
+        cost: 0, unitPerOrder: 1, cofund: false, coupons: { 日常: 0, 小促: 0, 大促: 0 },
+        creatorCommissionRate: "", salesShare: 1
+      }];
+      const exportRules = state.cofundRules.length ? state.cofundRules : [{
+        name: "待填写规则", scene: "大促", discountRate: 0, threshold: 0, cap: 0,
+        platformShare: 0, merchantShare: 0
+      }];
+      const workbook = XLSX.utils.book_new();
+      workbook.Workbook = workbook.Workbook || {};
+      workbook.Workbook.CalcPr = { calcMode: "auto", fullCalcOnLoad: true, forceFullCalc: true };
+
+      const colors = {
+        dark: "173B33", accent: "C9F36A", titleText: "FFFFFF", header: "E8F0EC",
+        input: "FFF7DF", inputText: "1565C0", formula: "F1F8F4", border: "CBD5E1",
+        note: "64748B", danger: "FEE2E2"
+      };
+      const titleStyle = { font: { bold: true, sz: 16, color: { rgb: colors.titleText } }, fill: { patternType: "solid", fgColor: { rgb: colors.dark } }, alignment: { vertical: "center" } };
+      const headerStyle = { font: { bold: true, color: { rgb: colors.dark } }, fill: { patternType: "solid", fgColor: { rgb: colors.header } }, alignment: { horizontal: "center", vertical: "center", wrapText: true }, border: { bottom: { style: "thin", color: { rgb: colors.border } } } };
+      const baseStyle = { font: { color: { rgb: "1F2937" } }, fill: { patternType: "solid", fgColor: { rgb: "FFFFFF" } }, alignment: { vertical: "center", wrapText: true } };
+      const inputStyle = { font: { color: { rgb: colors.inputText } }, fill: { patternType: "solid", fgColor: { rgb: colors.input } }, alignment: { vertical: "center", wrapText: true } };
+      const formulaStyle = { fill: { patternType: "solid", fgColor: { rgb: colors.formula } }, alignment: { vertical: "center", wrapText: true } };
+      const formulaCell = (formula, value = 0, format = "#,##0.00") => ({ t: "n", f: formula, v: Number.isFinite(Number(value)) ? Number(value) : 0, z: format });
+      const textFormulaCell = (formula, value = "") => ({ t: "str", f: formula, v: String(value ?? "") });
+      const ref = (sheet, column, row) => `'${sheet}'!$${column}$${row}`;
+      const styleRange = (sheet, range, style) => {
+        const decoded = XLSX.utils.decode_range(range);
+        for (let r = decoded.s.r; r <= decoded.e.r; r++) {
+          for (let c = decoded.s.c; c <= decoded.e.c; c++) {
+            const cell = sheet[XLSX.utils.encode_cell({ r, c })];
+            if (cell) cell.s = { ...(cell.s || {}), ...style };
+          }
+        }
+      };
+      const addSheet = (name, aoa, options = {}) => {
+        const sheet = XLSX.utils.aoa_to_sheet(aoa);
+        if (sheet["!ref"]) styleRange(sheet, sheet["!ref"], baseStyle);
+        if (options.merges) sheet["!merges"] = options.merges;
+        if (options.cols) sheet["!cols"] = options.cols.map(wch => typeof wch === "number" ? ({ wch }) : wch);
+        if (options.rows) sheet["!rows"] = options.rows;
+        if (options.autofilter) sheet["!autofilter"] = { ref: options.autofilter };
+        if (options.titleRange) styleRange(sheet, options.titleRange, titleStyle);
+        if (options.headerRange) styleRange(sheet, options.headerRange, headerStyle);
+        (options.inputRanges || []).forEach(range => styleRange(sheet, range, inputStyle));
+        (options.formulaRanges || []).forEach(range => styleRange(sheet, range, formulaStyle));
+        XLSX.utils.book_append_sheet(workbook, sheet, name);
+        return sheet;
+      };
+
+      const inputRows = [
+        [`${projectName} - 利润测算输入`],
+        ["蓝色字体/浅黄色底纹为可编辑输入；修改后 Excel 会自动重算所有场景、双口径利润与 ROI。"],
+        ["字段", "值", "口径说明"]
+      ];
+      const inputRow = {};
+      const addInput = (key, label, value, note) => {
+        inputRows.push([label, value, note]);
+        inputRow[key] = inputRows.length;
+      };
+      const p = state.project;
+      addInput("name", "项目名称", projectName, "仅作标识");
+      addInput("period", "测算周期", p.period || "", "例如 Q4 / 2026-08");
+      addInput("cofundMode", "当前总览口径", cofundModeEnabled() ? "使用共资券" : "不使用共资券", "可填：使用共资券 / 不使用共资券");
+      addInput("gmv", "项目目标GMV/用户实付GMV", num(p.gmv), "场景明细的分配基准");
+      addInput("targetROI", "目标项目ROI", num(p.targetROI), "结算收入 ÷ 总成本");
+      addInput("returnRate", "退货率", num(p.returnRate), "有效订单 = 原始订单 × (1-退货率)");
+      addInput("adSpend", "广告投流费用", num(p.adSpend), "按 SKU 与场景权重分摊");
+      addInput("creatorBuying", "达人采买费用", num(p.creatorBuying), "按 SKU 与场景权重分摊");
+      addInput("sampleCost", "额外样品成本", num(p.sampleCost), "固定金额，不按 GMV 比例估算");
+      addInput("otherCost", "其他费用", num(p.otherCost), "固定金额");
+      addInput("agencyRate", "代运营服务费率", num(p.agencyRate), "按目标 GMV 计提");
+      addInput("logisticsRate", "物流费率", num(p.logisticsRate), "按结算收入计提");
+      addInput("lossRate", "货损率", num(p.lossRate), "按结算收入计提");
+      addInput("platformInfraPerOrder", "平台基础设施费/有效订单", num(p.platformInfraPerOrder), "每个有效订单固定费用");
+      addInput("platformCommissionRate", "平台类目佣金率", num(p.platformCommissionRate), "按结算收入计提");
+      addInput("transactionRate", "交易手续费率", num(p.transactionRate), "按结算收入计提");
+      addInput("commerceGrowthRate", "商业增长费率", num(p.commerceGrowthRate), "按结算收入计提");
+      addInput("bcdFlashRate", "BCD/Flash佣金率", num(p.bcdFlashRate), "按结算收入计提");
+      addInput("resourcePackRate", "活动资源包费率", num(p.resourcePackRate), "按结算收入计提");
+      addInput("sfpRate", "SFP/运费项目费率", num(p.sfpRate), "按结算收入计提");
+      addInput("voucherXtraRate", "Voucher Xtra费率", num(p.voucherXtraRate), "按结算收入计提");
+      addInput("creatorCommissionRate", "默认达人佣金率", num(p.creatorCommissionRate), "SKU 未单独填写时使用");
+      addInput("newUserCoupon", "全店新客券", num(state.storeCoupon?.newUser), "与 SKU 场景券取较大值");
+      scenarios.forEach(scene => addInput(`scene_${scene}`, `${scene}GMV占比`, num(state.scenarioShares?.[scene]), "三种场景建议合计 100%"));
+      inputRows.push(["平台总费率", formulaCell([
+        "platformCommissionRate", "transactionRate", "commerceGrowthRate", "bcdFlashRate",
+        "resourcePackRate", "sfpRate", "voucherXtraRate"
+      ].map(key => `$B$${inputRow[key]}`).join("+"), platformRate(), "0.00%"), "上述平台费率合计"]);
+      inputRow.platformTotalRate = inputRows.length;
+      const inputSheet = addSheet("项目输入", inputRows, {
+        merges: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 2 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 2 } }],
+        cols: [32, 20, 48], rows: inputRows.map((_, i) => ({ hpt: i === 0 ? 28 : (i === 1 ? 30 : 22) })),
+        titleRange: "A1:C1", headerRange: "A3:C3", inputRanges: [`B4:B${inputRows.length - 1}`],
+        formulaRanges: [`B${inputRows.length}:B${inputRows.length}`]
+      });
+      ["returnRate", "agencyRate", "logisticsRate", "lossRate", "platformCommissionRate", "transactionRate", "commerceGrowthRate", "bcdFlashRate", "resourcePackRate", "sfpRate", "voucherXtraRate", "creatorCommissionRate", "scene_日常", "scene_小促", "scene_大促"].forEach(key => {
+        const cell = inputSheet[`B${inputRow[key]}`]; if (cell) cell.z = "0.00%";
+      });
+      const targetRoiCell = inputSheet[`B${inputRow.targetROI}`]; if (targetRoiCell) targetRoiCell.z = "0.00";
+
+      const skuRows = [
+        [`${projectName} - SKU 数据与销售权重`],
+        ["启用状态、价格、成本、场景券、佣金率和销售权重均可直接修改；SKU 权重会在启用 SKU 内自动归一化。"],
+        ["序号", "SKU", "产品名", "启用", "原价", "售价", "单件成本", "每单件数", "参与共资券", "日常券", "小促券", "大促券", "SKU达人佣金率", "SKU销售权重", "权重说明"]
+      ];
+      exportSkus.forEach((sku, index) => {
+        const currentShare = sku.enabled ? num(normalizedSkuShares.get(sku.sku)) : num(sku.salesShare);
+        skuRows.push([
+          index + 1, sku.sku || "", sku.name || "", sku.enabled !== false ? "是" : "否",
+          num(sku.originalPrice, num(sku.listPrice)), num(sku.listPrice), num(sku.cost), num(sku.unitPerOrder, 1) || 1,
+          sku.cofund !== false ? "是" : "否", num(sku.coupons?.日常), num(sku.coupons?.小促), num(sku.coupons?.大促),
+          sku.creatorCommissionRate === "" || sku.creatorCommissionRate == null ? "" : num(sku.creatorCommissionRate),
+          currentShare, sku.enabled ? "当前网站归一化占比" : "停用 SKU 不参与计算"
+        ]);
+      });
+      const skuStartRow = 4;
+      const skuEndRow = skuRows.length;
+      const skuSheet = addSheet("SKU数据", skuRows, {
+        merges: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 14 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 14 } }],
+        cols: [7, 26, 24, 9, 12, 12, 13, 11, 13, 11, 11, 11, 16, 15, 25],
+        rows: skuRows.map((_, i) => ({ hpt: i === 0 ? 28 : (i === 1 ? 30 : 23) })),
+        titleRange: "A1:O1", headerRange: "A3:O3", inputRanges: [`B4:N${skuEndRow}`], autofilter: `A3:O${skuEndRow}`
+      });
+      for (let row = skuStartRow; row <= skuEndRow; row++) {
+        ["E", "F", "G", "J", "K", "L"].forEach(col => { if (skuSheet[`${col}${row}`]) skuSheet[`${col}${row}`].z = "#,##0.00"; });
+        ["M", "N"].forEach(col => { if (skuSheet[`${col}${row}`] && skuSheet[`${col}${row}`].t === "n") skuSheet[`${col}${row}`].z = "0.00%"; });
+      }
+
+      const ruleRows = [
+        [`${projectName} - 共资券规则`],
+        ["场景明细会逐条比较可用券，并选择用户优惠金额最大的规则。平台承担 + 商家承担应等于 100%。"],
+        ["序号", "券名", "场景", "折扣率", "门槛", "封顶", "平台承担", "商家承担", "分摊校验"]
+      ];
+      exportRules.forEach((rule, index) => ruleRows.push([
+        index + 1, rule.name || "", rule.scene || "大促", num(rule.discountRate), num(rule.threshold), num(rule.cap),
+        num(rule.platformShare), num(rule.merchantShare), formulaCell(`G${index + 4}+H${index + 4}`, num(rule.platformShare) + num(rule.merchantShare), "0.00%")
+      ]));
+      const ruleStartRow = 4;
+      const ruleEndRow = ruleRows.length;
+      const ruleSheet = addSheet("共资券规则", ruleRows, {
+        merges: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 8 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 8 } }],
+        cols: [7, 20, 12, 12, 12, 12, 13, 13, 13],
+        rows: ruleRows.map((_, i) => ({ hpt: i === 0 ? 28 : (i === 1 ? 30 : 23) })),
+        titleRange: "A1:I1", headerRange: "A3:I3", inputRanges: [`B4:H${ruleEndRow}`], formulaRanges: [`I4:I${ruleEndRow}`], autofilter: `A3:I${ruleEndRow}`
+      });
+      for (let row = ruleStartRow; row <= ruleEndRow; row++) {
+        ["D", "G", "H", "I"].forEach(col => { if (ruleSheet[`${col}${row}`]) ruleSheet[`${col}${row}`].z = "0.00%"; });
+        ["E", "F"].forEach(col => { if (ruleSheet[`${col}${row}`]) ruleSheet[`${col}${row}`].z = "#,##0.00"; });
+      }
+
+      const detailHeaders = [
+        "口径", "SKU行", "SKU", "产品名", "场景", "SKU占比", "场景占比", "场景目标GMV", "原价", "售价", "店铺券", "券后价",
+        "匹配共资券", "共资券面额", "用户共资优惠", "商家承担", "平台补贴/件", "用户实付/件", "结算/件", "每单件数",
+        "订单AOV", "原始订单数", "有效订单数", "有效件数", "有效用户实付GMV", "平台补贴", "结算收入", "平台扣费", "达人佣金",
+        "货品成本", "物流", "货损", "广告分摊", "达人采买分摊", "场景总成本", "场景净利润", "最佳券序号",
+        ...exportRules.map((rule, index) => `候选券${index + 1}:${rule.name || "未命名"}`)
+      ];
+      const detailRows = [
+        [`${projectName} - SKU × 场景 × 共资券口径明细`],
+        ["此表为公式计算层。请优先在“项目输入”“SKU数据”“共资券规则”修改参数，避免直接覆盖本表公式。"],
+        detailHeaders
+      ];
+      const websiteDetails = new Map();
+      const detailKey = (mode, row) => `${mode}|${row?.sku || ""}|${row?.name || ""}|${row?.scene || ""}`;
+      detailsWith.forEach(row => websiteDetails.set(detailKey("使用共资券", row), row));
+      detailsWithout.forEach(row => websiteDetails.set(detailKey("不使用共资券", row), row));
+      const helperStartIndex = 37;
+      const helperStartCol = XLSX.utils.encode_col(helperStartIndex);
+      const helperEndCol = XLSX.utils.encode_col(helperStartIndex + exportRules.length - 1);
+      const currentRuleIndex = (sku, scene, enabled) => {
+        if (!enabled || !sku.cofund || scene !== "大促") return 0;
+        let bestIndex = 0;
+        let bestAmount = 0;
+        exportRules.forEach((rule, index) => {
+          if ((rule.scene || "大促") !== scene || num(sku.listPrice) < num(rule.threshold)) return;
+          const amount = Math.min(num(sku.listPrice) * num(rule.discountRate), num(rule.cap));
+          if (amount > bestAmount) { bestAmount = amount; bestIndex = index + 1; }
+        });
+        return bestIndex;
+      };
+      ["使用共资券", "不使用共资券"].forEach(mode => {
+        exportSkus.forEach((sku, skuIndex) => {
+          const skuRowNumber = skuStartRow + skuIndex;
+          scenarios.forEach(scene => {
+            const excelRow = detailRows.length + 1;
+            const cached = websiteDetails.get(`${mode}|${sku.sku || ""}|${sku.name || ""}|${scene}`) || {};
+            const enabled = sku.enabled !== false;
+            const activeMode = mode === "使用共资券";
+            const helperCells = exportRules.map((rule, ruleIndex) => {
+              const ruleRow = ruleStartRow + ruleIndex;
+              const formula = `IF(AND($A${excelRow}="使用共资券",$E${excelRow}=${ref("共资券规则", "C", ruleRow)},${ref("SKU数据", "I", skuRowNumber)}="是",${ref("SKU数据", "F", skuRowNumber)}>=${ref("共资券规则", "E", ruleRow)}),MIN(${ref("SKU数据", "F", skuRowNumber)}*${ref("共资券规则", "D", ruleRow)},${ref("共资券规则", "F", ruleRow)}),0)`;
+              let cachedAmount = 0;
+              if (activeMode && enabled && sku.cofund !== false && scene === (rule.scene || "大促") && num(sku.listPrice) >= num(rule.threshold)) {
+                cachedAmount = Math.min(num(sku.listPrice) * num(rule.discountRate), num(rule.cap));
+              }
+              return formulaCell(formula, cachedAmount);
+            });
+            const bestIndex = currentRuleIndex(sku, scene, activeMode);
+            const bestRule = bestIndex ? exportRules[bestIndex - 1] : null;
+            const candidateRange = `$${helperStartCol}${excelRow}:$${helperEndCol}${excelRow}`;
+            const skuShareFormula = `IFERROR(IF(${ref("SKU数据", "D", skuRowNumber)}="是",${ref("SKU数据", "N", skuRowNumber)}/SUMIF(${ref("SKU数据", "D", skuStartRow)}:${ref("SKU数据", "D", skuEndRow)},"是",${ref("SKU数据", "N", skuStartRow)}:${ref("SKU数据", "N", skuEndRow)}),0),0)`;
+            const sceneShareFormula = `${ref("项目输入", "B", inputRow[`scene_${scene}`])}`;
+            const couponColumn = scene === "日常" ? "J" : (scene === "小促" ? "K" : "L");
+            const row = [
+              mode,
+              skuIndex + 1,
+              textFormulaCell(`${ref("SKU数据", "B", skuRowNumber)}`, sku.sku || ""),
+              textFormulaCell(`${ref("SKU数据", "C", skuRowNumber)}`, sku.name || ""),
+              scene,
+              formulaCell(skuShareFormula, cached.skuShare || 0, "0.00%"),
+              formulaCell(sceneShareFormula, cached.sceneShare || num(state.scenarioShares?.[scene]), "0.00%"),
+              formulaCell(`${ref("项目输入", "B", inputRow.gmv)}*$F${excelRow}*$G${excelRow}`, cached.sceneGMV || 0),
+              formulaCell(`${ref("SKU数据", "E", skuRowNumber)}`, num(sku.originalPrice, num(sku.listPrice))),
+              formulaCell(`${ref("SKU数据", "F", skuRowNumber)}`, num(sku.listPrice)),
+              formulaCell(`MAX(${ref("项目输入", "B", inputRow.newUserCoupon)},${ref("SKU数据", couponColumn, skuRowNumber)})`, cached.storeCoupon || 0),
+              formulaCell(`MAX(0,$J${excelRow}-$K${excelRow})`, cached.afterStore || 0),
+              textFormulaCell(`IF($A${excelRow}="不使用共资券","未使用",IF($AK${excelRow}=0,"无可用券",INDEX('共资券规则'!$B$${ruleStartRow}:$B$${ruleEndRow},$AK${excelRow})))`, cached.cofundName || (activeMode ? "无可用券" : "未使用")),
+              formulaCell(`MAX(${candidateRange})`, cached.userCofund || 0),
+              formulaCell(`$N${excelRow}`, cached.userCofund || 0),
+              formulaCell(`IF($AK${excelRow}=0,0,$N${excelRow}*INDEX('共资券规则'!$H$${ruleStartRow}:$H$${ruleEndRow},$AK${excelRow}))`, cached.merchantCofund || 0),
+              formulaCell(`IF($AK${excelRow}=0,0,$N${excelRow}*INDEX('共资券规则'!$G$${ruleStartRow}:$G$${ruleEndRow},$AK${excelRow}))`, cached.platformSubsidyPerUnit || 0),
+              formulaCell(`MAX(0,$L${excelRow}-$O${excelRow})`, cached.userPay || 0),
+              formulaCell(`MAX(0,$L${excelRow}-$P${excelRow})`, cached.settlementPerUnit || 0),
+              formulaCell(`${ref("SKU数据", "H", skuRowNumber)}`, num(sku.unitPerOrder, 1) || 1, "#,##0.00"),
+              formulaCell(`$R${excelRow}*$T${excelRow}`, cached.orderAov || 0),
+              formulaCell(`IFERROR($H${excelRow}/$U${excelRow},0)`, cached.orders || 0),
+              formulaCell(`$V${excelRow}*(1-${ref("项目输入", "B", inputRow.returnRate)})`, cached.effectiveOrders || 0),
+              formulaCell(`$W${excelRow}*$T${excelRow}`, cached.effectiveUnits || 0),
+              formulaCell(`$W${excelRow}*$U${excelRow}`, cached.userPaidEffectiveGMV || 0),
+              formulaCell(`$X${excelRow}*$Q${excelRow}`, cached.platformSubsidy || 0),
+              formulaCell(`$X${excelRow}*$S${excelRow}`, cached.settlementIncome || 0),
+              formulaCell(`$AA${excelRow}*${ref("项目输入", "B", inputRow.platformTotalRate)}+$W${excelRow}*${ref("项目输入", "B", inputRow.platformInfraPerOrder)}`, cached.platformFee || 0),
+              formulaCell(`$AA${excelRow}*IF(${ref("SKU数据", "M", skuRowNumber)}>0,${ref("SKU数据", "M", skuRowNumber)},${ref("项目输入", "B", inputRow.creatorCommissionRate)})`, cached.creatorCommission || 0),
+              formulaCell(`$X${excelRow}*${ref("SKU数据", "G", skuRowNumber)}`, cached.cogs || 0),
+              formulaCell(`$AA${excelRow}*${ref("项目输入", "B", inputRow.logisticsRate)}`, cached.logistics || 0),
+              formulaCell(`$AA${excelRow}*${ref("项目输入", "B", inputRow.lossRate)}`, cached.loss || 0),
+              formulaCell(`${ref("项目输入", "B", inputRow.adSpend)}*$F${excelRow}*$G${excelRow}`, cached.adAlloc || 0),
+              formulaCell(`${ref("项目输入", "B", inputRow.creatorBuying)}*$F${excelRow}*$G${excelRow}`, cached.creatorBuyingAlloc || 0),
+              formulaCell(`SUM($AB${excelRow}:$AH${excelRow})`, cached.sceneCost || 0),
+              formulaCell(`$AA${excelRow}-$AI${excelRow}`, cached.sceneProfit || 0),
+              formulaCell(`IF($N${excelRow}=0,0,MATCH($N${excelRow},${candidateRange},0))`, bestIndex, "0"),
+              ...helperCells
+            ];
+            detailRows.push(row);
+          });
+        });
+      });
+      const detailEndRow = detailRows.length;
+      const detailSheet = addSheet("场景明细", detailRows, {
+        merges: [{ s: { r: 0, c: 0 }, e: { r: 0, c: detailHeaders.length - 1 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: detailHeaders.length - 1 } }],
+        cols: detailHeaders.map((_, index) => index === 0 ? 14 : ([2, 3, 12].includes(index) ? 22 : (index >= helperStartIndex ? ({ wch: 12, hidden: true }) : 14))),
+        rows: detailRows.map((_, i) => ({ hpt: i === 0 ? 28 : (i === 1 ? 30 : 22) })),
+        titleRange: `A1:${XLSX.utils.encode_col(detailHeaders.length - 1)}1`, headerRange: `A3:${XLSX.utils.encode_col(detailHeaders.length - 1)}3`,
+        formulaRanges: [`C4:${XLSX.utils.encode_col(detailHeaders.length - 1)}${detailEndRow}`], autofilter: `A3:AJ${detailEndRow}`
+      });
+      ["F", "G"].forEach(col => { for (let row = 4; row <= detailEndRow; row++) if (detailSheet[`${col}${row}`]) detailSheet[`${col}${row}`].z = "0.00%"; });
+
+      const summaryByMode = { "使用共资券": summaryWith, "不使用共资券": summaryWithout };
+      const compareRows = [
+        [`${projectName} - 共资券双口径对比`],
+        ["两套口径共用同一组项目、SKU 与费率输入；差异列 = 使用共资券 - 不使用共资券。"],
+        ["指标", "使用共资券", "不使用共资券", "差异", "说明"]
+      ];
+      const compareRow = {};
+      const addCompare = (key, label, formulas, values, format, note) => {
+        const rowNumber = compareRows.length + 1;
+        compareRow[key] = rowNumber;
+        compareRows.push([
+          label,
+          formulaCell(formulas[0], values[0], format),
+          formulaCell(formulas[1], values[1], format),
+          formulaCell(`B${rowNumber}-C${rowNumber}`, values[0] - values[1], format),
+          note
+        ]);
+      };
+      const sumifs = (column, modeColumn) => `SUMIFS('场景明细'!$${column}$4:$${column}$${detailEndRow},'场景明细'!$A$4:$A$${detailEndRow},${modeColumn}$3)`;
+      const modeFormulas = column => [sumifs(column, "B"), sumifs(column, "C")];
+      addCompare("gmv", "项目目标GMV", [ref("项目输入", "B", inputRow.gmv), ref("项目输入", "B", inputRow.gmv)], [num(p.gmv), num(p.gmv)], "#,##0.00", "用户实付GMV分配基准");
+      addCompare("effectiveGmv", "有效用户实付GMV", modeFormulas("Y"), [summaryWith.effectiveUserPaidGMV, summaryWithout.effectiveUserPaidGMV], "#,##0.00", "扣除退货后的用户实付");
+      addCompare("subsidy", "平台共资补贴", modeFormulas("Z"), [summaryWith.platformSubsidy, summaryWithout.platformSubsidy], "#,##0.00", "平台承担的券补贴");
+      addCompare("settlement", "结算收入", modeFormulas("AA"), [summaryWith.settlementIncome, summaryWithout.settlementIncome], "#,##0.00", "有效用户实付 + 平台补贴");
+      addCompare("orders", "有效订单数", modeFormulas("W"), [summaryWith.effectiveOrders, summaryWithout.effectiveOrders], "#,##0.00", "扣除退货后的订单");
+      addCompare("aov", "综合AOV/订单实付", [`IFERROR(B${compareRow.effectiveGmv}/B${compareRow.orders},0)`, `IFERROR(C${compareRow.effectiveGmv}/C${compareRow.orders},0)`], [summaryWith.aov, summaryWithout.aov], "#,##0.00", "自动反推");
+      addCompare("ad", "广告投流费用", [ref("项目输入", "B", inputRow.adSpend), ref("项目输入", "B", inputRow.adSpend)], [summaryWith.adSpend, summaryWithout.adSpend], "#,##0.00", "固定投入");
+      addCompare("platformFee", "平台扣费", modeFormulas("AB"), [summaryWith.platformFee, summaryWithout.platformFee], "#,##0.00", "平台费率 + 每单固定费");
+      addCompare("creator", "达人佣金", modeFormulas("AC"), [summaryWith.creatorCommission, summaryWithout.creatorCommission], "#,##0.00", "按 SKU 或默认佣金率");
+      addCompare("cogs", "货品成本", modeFormulas("AD"), [summaryWith.cogs, summaryWithout.cogs], "#,##0.00", "有效 SKU 件数 × 单件成本");
+      addCompare("logistics", "物流成本", modeFormulas("AE"), [summaryWith.logistics, summaryWithout.logistics], "#,##0.00", "按结算收入计提");
+      addCompare("loss", "货损成本", modeFormulas("AF"), [summaryWith.loss, summaryWithout.loss], "#,##0.00", "按结算收入计提");
+      addCompare("creatorBuying", "达人采买费用", [ref("项目输入", "B", inputRow.creatorBuying), ref("项目输入", "B", inputRow.creatorBuying)], [summaryWith.creatorBuying, summaryWithout.creatorBuying], "#,##0.00", "固定投入");
+      addCompare("agency", "代运营服务费", [`${ref("项目输入", "B", inputRow.gmv)}*${ref("项目输入", "B", inputRow.agencyRate)}`, `${ref("项目输入", "B", inputRow.gmv)}*${ref("项目输入", "B", inputRow.agencyRate)}`], [summaryWith.agency, summaryWithout.agency], "#,##0.00", "目标GMV × 服务费率");
+      addCompare("sample", "额外样品成本", [ref("项目输入", "B", inputRow.sampleCost), ref("项目输入", "B", inputRow.sampleCost)], [summaryWith.sampleCost, summaryWithout.sampleCost], "#,##0.00", "按实际额外投入填写");
+      addCompare("other", "其他费用", [ref("项目输入", "B", inputRow.otherCost), ref("项目输入", "B", inputRow.otherCost)], [summaryWith.otherCost, summaryWithout.otherCost], "#,##0.00", "固定投入");
+      const costKeys = ["ad", "platformFee", "creator", "cogs", "logistics", "loss", "creatorBuying", "agency", "sample", "other"];
+      addCompare("totalCost", "品牌方总成本", [
+        costKeys.map(key => `B${compareRow[key]}`).join("+"), costKeys.map(key => `C${compareRow[key]}`).join("+")
+      ], [summaryWith.totalCost, summaryWithout.totalCost], "#,##0.00", "全部成本合计");
+      addCompare("profit", "品牌方净利润", [`B${compareRow.settlement}-B${compareRow.totalCost}`, `C${compareRow.settlement}-C${compareRow.totalCost}`], [summaryWith.profit, summaryWithout.profit], "#,##0.00", "结算收入 - 总成本");
+      addCompare("profitRate", "净利率", [`IFERROR(B${compareRow.profit}/B${compareRow.settlement},0)`, `IFERROR(C${compareRow.profit}/C${compareRow.settlement},0)`], [summaryWith.profitRate, summaryWithout.profitRate], "0.00%", "净利润 ÷ 结算收入");
+      addCompare("roi", "项目总ROI", [`IFERROR(B${compareRow.settlement}/B${compareRow.totalCost},0)`, `IFERROR(C${compareRow.settlement}/C${compareRow.totalCost},0)`], [summaryWith.totalRoi, summaryWithout.totalRoi], "0.00", "结算收入 ÷ 总成本");
+      addCompare("backendRoas", "后台广告ROAS", [`IFERROR(B${compareRow.gmv}/B${compareRow.ad},0)`, `IFERROR(C${compareRow.gmv}/C${compareRow.ad},0)`], [summaryWith.backendRoas, summaryWithout.backendRoas], "0.00", "目标GMV ÷ 广告费");
+      addCompare("effectiveRoas", "有效广告ROAS", [`IFERROR(B${compareRow.effectiveGmv}/B${compareRow.ad},0)`, `IFERROR(C${compareRow.effectiveGmv}/C${compareRow.ad},0)`], [summaryWith.effectiveRoas, summaryWithout.effectiveRoas], "0.00", "有效用户实付GMV ÷ 广告费");
+      const compareSheet = addSheet("口径对比", compareRows, {
+        merges: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 4 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 4 } }],
+        cols: [28, 20, 20, 20, 40], rows: compareRows.map((_, i) => ({ hpt: i === 0 ? 28 : (i === 1 ? 30 : 23) })),
+        titleRange: "A1:E1", headerRange: "A3:E3", formulaRanges: [`B4:D${compareRows.length}`], autofilter: `A3:E${compareRows.length}`
+      });
+      [compareRow.profit, compareRow.profitRate, compareRow.roi].forEach(row => {
+        for (const col of ["B", "C", "D"]) {
+          const cell = compareSheet[`${col}${row}`];
+          if (cell && Number(cell.v) < 0) cell.s = { ...(cell.s || {}), fill: { patternType: "solid", fgColor: { rgb: colors.danger } } };
+        }
+      });
+
+      const activeSummary = cofundModeEnabled() ? summaryWith : summaryWithout;
+      const activeCompareColumn = cofundModeEnabled() ? "B" : "C";
+      const activeFormula = key => `IF($B$3="使用共资券",'口径对比'!$B$${compareRow[key]},'口径对比'!$C$${compareRow[key]})`;
+      const overviewRows = [
+        [`${projectName} - 利润测算总览`],
+        [`导出时间：${new Date().toLocaleString("zh-CN", { hour12: false })}；输入工作表修改后将自动联动重算。`],
+        ["当前口径", textFormulaCell(ref("项目输入", "B", inputRow.cofundMode), cofundModeEnabled() ? "使用共资券" : "不使用共资券"), "项目", projectName, "周期", p.period || ""],
+        [""],
+        ["核心指标", "当前值", "计算口径", "检查项", "状态", "说明"],
+        ["结算收入", formulaCell(activeFormula("settlement"), activeSummary.settlementIncome), "用户实付 + 平台补贴", "场景占比合计", textFormulaCell(`IF(ABS(SUM(${ref("项目输入", "B", inputRow["scene_日常"])}:${ref("项目输入", "B", inputRow["scene_大促"])})-1)<0.0001,"PASS","FAIL")`, Math.abs(scenarios.reduce((sum, scene) => sum + num(state.scenarioShares?.[scene]), 0) - 1) < 0.0001 ? "PASS" : "FAIL"), "应为 100%"],
+        ["品牌方总成本", formulaCell(activeFormula("totalCost"), activeSummary.totalCost), "全部成本合计", "启用SKU权重合计", textFormulaCell(`IF(ABS(SUMIF('SKU数据'!$D$${skuStartRow}:$D$${skuEndRow},"是",'SKU数据'!$N$${skuStartRow}:$N$${skuEndRow})-1)<0.0001,"PASS","FAIL")`, Math.abs(exportSkus.filter(sku => sku.enabled !== false).reduce((sum, sku) => sum + num(normalizedSkuShares.get(sku.sku)), 0) - 1) < 0.0001 ? "PASS" : "FAIL"), "应为 100%"],
+        ["品牌方净利润", formulaCell(activeFormula("profit"), activeSummary.profit), "结算收入 - 总成本", "结算勾稽", textFormulaCell(`IF(ABS(SUMIFS('场景明细'!$AA$4:$AA$${detailEndRow},'场景明细'!$A$4:$A$${detailEndRow},$B$3)-SUMIFS('场景明细'!$Y$4:$Y$${detailEndRow},'场景明细'!$A$4:$A$${detailEndRow},$B$3)-SUMIFS('场景明细'!$Z$4:$Z$${detailEndRow},'场景明细'!$A$4:$A$${detailEndRow},$B$3))<0.01,"PASS","FAIL")`, "PASS"), "结算 = 实付 + 平台补贴"],
+        ["净利率", formulaCell(activeFormula("profitRate"), activeSummary.profitRate, "0.00%"), "净利润 ÷ 结算收入", "成本勾稽", textFormulaCell(`IF(ABS(${activeFormula("totalCost")}-(${costKeys.map(key => activeFormula(key)).join("+")}))<0.01,"PASS","FAIL")`, "PASS"), "总成本 = 各成本项合计"],
+        ["项目总ROI", formulaCell(activeFormula("roi"), activeSummary.totalRoi, "0.00"), "结算收入 ÷ 总成本", "共资券分摊", textFormulaCell(`IF(COUNTIF('共资券规则'!$I$${ruleStartRow}:$I$${ruleEndRow},"<>1")=0,"PASS","FAIL")`, exportRules.every(rule => Math.abs(num(rule.platformShare) + num(rule.merchantShare) - 1) < 0.0001) ? "PASS" : "FAIL"), "平台 + 商家应为 100%"],
+        ["综合AOV", formulaCell(activeFormula("aov"), activeSummary.aov), "有效实付 ÷ 有效订单", "当前口径", textFormulaCell(`IF(OR($B$3="使用共资券",$B$3="不使用共资券"),"PASS","FAIL")`, "PASS"), "只接受两种口径名称"],
+        ["有效订单数", formulaCell(activeFormula("orders"), activeSummary.effectiveOrders), "扣除退货后的订单", "公式刷新", "打开 Excel 后自动重算", "若使用 WPS，请确认开启自动重算"],
+        ["平台共资补贴", formulaCell(activeFormula("subsidy"), activeSummary.platformSubsidy), "平台承担的券补贴", "模型结构", "输入→明细→对比→总览", "不要覆盖场景明细公式"]
+      ];
+      const overviewSheet = addSheet("说明与总览", overviewRows, {
+        merges: [{ s: { r: 0, c: 0 }, e: { r: 0, c: 5 } }, { s: { r: 1, c: 0 }, e: { r: 1, c: 5 } }, { s: { r: 3, c: 0 }, e: { r: 3, c: 5 } }],
+        cols: [24, 20, 32, 24, 18, 36], rows: overviewRows.map((_, i) => ({ hpt: i === 0 ? 30 : (i === 1 ? 28 : 24) })),
+        titleRange: "A1:F1", headerRange: "A5:F5", formulaRanges: [`B6:B${overviewRows.length}`, `E6:E${overviewRows.length}`]
+      });
+      styleRange(overviewSheet, "A4:F4", { fill: { patternType: "solid", fgColor: { rgb: colors.dark } } });
+      if (overviewSheet.B3) overviewSheet.B3.s = inputStyle;
+      workbook.SheetNames = ["说明与总览", "项目输入", "SKU数据", "共资券规则", "场景明细", "口径对比"];
+      workbook.Sheets = Object.fromEntries(workbook.SheetNames.map(name => [name, workbook.Sheets[name]]));
+      XLSX.writeFile(workbook, `BM-完整利润测算-${safeProjectName}-${exportDate}.xlsx`, { bookType: "xlsx", cellStyles: true });
+    }
     function bindInputs() {
       document.querySelectorAll("[data-path]").forEach(el => {
         el.disabled = !isEditing;
@@ -3310,6 +3665,7 @@
       if (confirm("确认恢复空白模板？当前输入会被覆盖。")) { state = structuredClone(defaultState); saveState(); render(); }
     };
     document.getElementById("exportJson").onclick = () => download("profit-calculator-params.json", JSON.stringify(state, null, 2), "application/json");
+    document.getElementById("exportWorkbook").onclick = exportFullProfitWorkbook;
     document.getElementById("importJson").onchange = async e => {
       const file = e.target.files[0]; if (!file) return;
       state = { ...structuredClone(defaultState), ...JSON.parse(await file.text()) };
