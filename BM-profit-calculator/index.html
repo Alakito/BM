@@ -3307,7 +3307,7 @@
             const activeMode = mode === "使用共资券";
             const helperCells = exportRules.map((rule, ruleIndex) => {
               const ruleRow = ruleStartRow + ruleIndex;
-              const formula = `IF(AND($A${excelRow}="使用共资券",$E${excelRow}=${ref("共资券规则", "C", ruleRow)},${ref("SKU数据", "I", skuRowNumber)}="是",${ref("SKU数据", "F", skuRowNumber)}>=${ref("共资券规则", "E", ruleRow)}),MIN(${ref("SKU数据", "F", skuRowNumber)}*${ref("共资券规则", "D", ruleRow)},${ref("共资券规则", "F", ruleRow)}),0)`;
+              const formula = `IF(AND($A${excelRow}="使用共资券",$E${excelRow}="大促",${ref("共资券规则", "C", ruleRow)}="大促",${ref("SKU数据", "I", skuRowNumber)}="是",${ref("SKU数据", "F", skuRowNumber)}>=${ref("共资券规则", "E", ruleRow)}),MIN(${ref("SKU数据", "F", skuRowNumber)}*${ref("共资券规则", "D", ruleRow)},${ref("共资券规则", "F", ruleRow)}),0)`;
               let cachedAmount = 0;
               if (activeMode && enabled && sku.cofund !== false && scene === (rule.scene || "大促") && num(sku.listPrice) >= num(rule.threshold)) {
                 cachedAmount = Math.min(num(sku.listPrice) * num(rule.discountRate), num(rule.cap));
