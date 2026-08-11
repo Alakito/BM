@@ -570,6 +570,9 @@
     const money0 = new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 });
     const money2 = new Intl.NumberFormat("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     const stateKeyBase = "bmVideoMaterialAnalysisStateV1";
+    const largeStateDbName = "bmOpsLargeStateV1";
+    const largeStateStoreName = "records";
+    let largeStateDbPromise = null;
     const defaultState = {
       detailRows: [],
       detailFileName: "",
@@ -643,9 +646,111 @@
         return structuredClone(defaultState);
       }
     }
-    function saveState() {
+    function compactStateSnapshot() {
+      const { detailRows: _detailRows, metadataRows: _metadataRows, ...settings } = state;
+      return structuredClone(settings);
+    }
+    function openLargeStateDb() {
+      if (!window.indexedDB) return Promise.reject(new Error("当前浏览器不支持大容量本地存储。"));
+      if (largeStateDbPromise) return largeStateDbPromise;
+      largeStateDbPromise = new Promise((resolve, reject) => {
+        const request = indexedDB.open(largeStateDbName, 1);
+        request.onupgradeneeded = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains(largeStateStoreName)) db.createObjectStore(largeStateStoreName, { keyPath: "key" });
+        };
+        request.onsuccess = () => {
+          const db = request.result;
+          db.onversionchange = () => { db.close(); largeStateDbPromise = null; };
+          resolve(db);
+        };
+        request.onerror = () => reject(request.error || new Error("大容量存储初始化失败。"));
+        request.onblocked = () => reject(new Error("大容量存储升级被其他页面占用，请关闭重复页面后重试。"));
+      });
+      largeStateDbPromise.catch(() => { largeStateDbPromise = null; });
+      return largeStateDbPromise;
+    }
+    function indexedRequest(request) {
+      return new Promise((resolve, reject) => {
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error || new Error("读取大容量存储失败。"));
+      });
+    }
+    function indexedTransactionDone(transaction) {
+      return new Promise((resolve, reject) => {
+        transaction.oncomplete = () => resolve();
+        transaction.onerror = () => reject(transaction.error || new Error("保存大容量数据失败。"));
+        transaction.onabort = () => reject(transaction.error || new Error("保存大容量数据已中止。"));
+      });
+    }
+    function largeRecordKey(type) {
+      return `${scopedKey()}::${type}`;
+    }
+    async function readLargeRecord(type) {
+      const db = await openLargeStateDb();
+      const transaction = db.transaction(largeStateStoreName, "readonly");
+      return indexedRequest(transaction.objectStore(largeStateStoreName).get(largeRecordKey(type)));
+    }
+    async function persistIndexedState({ detailRows = false, metadataRows = false } = {}) {
+      const db = await openLargeStateDb();
+      const transaction = db.transaction(largeStateStoreName, "readwrite");
+      const store = transaction.objectStore(largeStateStoreName);
+      const updatedAt = new Date().toISOString();
+      store.put({ key: largeRecordKey("settings"), value: compactStateSnapshot(), updatedAt });
+      if (detailRows) store.put({ key: largeRecordKey("detailRows"), value: state.detailRows, updatedAt });
+      if (metadataRows) store.put({ key: largeRecordKey("metadataRows"), value: state.metadataRows, updatedAt });
+      await indexedTransactionDone(transaction);
+      return true;
+    }
+    function writeCompactLocalState() {
+      const value = JSON.stringify(compactStateSnapshot());
+      try {
+        localStorage.setItem(scopedKey(), value);
+        return true;
+      } catch (error) {
+        try {
+          localStorage.removeItem(scopedKey());
+          localStorage.setItem(scopedKey(), value);
+          return true;
+        } catch {
+          console.warn("轻量设置无法写入 localStorage，已改由 IndexedDB 保存。", error);
+          return false;
+        }
+      }
+    }
+    function storageErrorMessage(error) {
+      if (error?.name === "QuotaExceededError") return "浏览器可用存储空间不足，请释放少量磁盘空间后重试。";
+      return error?.message || "大容量存储失败，请检查浏览器是否允许此网站保存数据。";
+    }
+    function saveState(options = {}) {
       state = normalizeState(state);
-      localStorage.setItem(scopedKey(), JSON.stringify(state));
+      writeCompactLocalState();
+      const task = persistIndexedState(options);
+      if (options.throwOnError) return task;
+      return task.catch(error => {
+        console.error("视频分析数据保存失败", error);
+        return false;
+      });
+    }
+    async function hydrateLargeState() {
+      const legacyDetailRows = Array.isArray(state.detailRows) ? state.detailRows : [];
+      const legacyMetadataRows = Array.isArray(state.metadataRows) ? state.metadataRows : [];
+      const [settingsRecord, detailRecord, metadataRecord] = await Promise.all([
+        readLargeRecord("settings"), readLargeRecord("detailRows"), readLargeRecord("metadataRows")
+      ]);
+      const settings = settingsRecord?.value && typeof settingsRecord.value === "object" ? settingsRecord.value : {};
+      state = normalizeState({
+        ...structuredClone(defaultState),
+        ...state,
+        ...settings,
+        detailRows: Array.isArray(detailRecord?.value) ? detailRecord.value : legacyDetailRows,
+        metadataRows: Array.isArray(metadataRecord?.value) ? metadataRecord.value : legacyMetadataRows
+      });
+      const migratedDetailRows = !detailRecord && legacyDetailRows.length > 0;
+      const migratedMetadataRows = !metadataRecord && legacyMetadataRows.length > 0;
+      await persistIndexedState({ detailRows: migratedDetailRows, metadataRows: migratedMetadataRows });
+      writeCompactLocalState();
+      return { migratedDetailRows, migratedMetadataRows };
     }
     function normalizeState(next) {
       if (!Array.isArray(next.detailRows)) next.detailRows = [];
@@ -998,10 +1103,16 @@
       if (index >= 0) rows[index] = next; else rows.push(next);
       state.metadataRows = mergeMetadataRows(rows, []);
       state.metaEditKey = "";
-      saveState();
+      saveState({ metadataRows: true, throwOnError: true }).then(() => {
+        const status = document.getElementById("metadataStatus");
+        if (status) status.textContent = "已保存手动补充：产品/方向/类型/批次。";
+      }).catch(error => {
+        const status = document.getElementById("metadataStatus");
+        if (status) status.textContent = `保存失败：${storageErrorMessage(error)}`;
+      });
       render();
       const status = document.getElementById("metadataStatus");
-      if (status) status.textContent = `已保存手动补充：产品/方向/类型/批次。`;
+      if (status) status.textContent = "正在保存手动补充...";
     }
     function publishInfoFields(row) {
       const meta = publishInfoFor(row);
@@ -2518,16 +2629,26 @@
       const file = event.target.files?.[0];
       if (!file) return;
       document.getElementById("importStatus").textContent = "正在读取视频明细表...";
+      const previousRows = state.detailRows;
+      const previousFileName = state.detailFileName;
+      let changed = false;
       try {
         const result = parseVideoDetailWorkbook(await file.arrayBuffer());
         const before = state.detailRows.length;
         state.detailRows = mergeRows(state.detailRows, result.rows, detailRowKey);
         state.detailFileName = file.name;
-        saveState();
+        changed = true;
+        document.getElementById("importStatus").textContent = "正在保存视频明细表...";
+        await saveState({ detailRows: true, throwOnError: true });
         render();
         document.getElementById("importStatus").textContent = `视频明细表导入成功：本次 ${result.rows.length} 行，累计 ${state.detailRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.detailRows.length)} 行；工作表：${result.sheetName}）。`;
       } catch (error) {
-        document.getElementById("importStatus").textContent = `视频明细表导入失败：${error.message || error}`;
+        if (changed) {
+          state.detailRows = previousRows;
+          state.detailFileName = previousFileName;
+          render();
+        }
+        document.getElementById("importStatus").textContent = `视频明细表导入失败：${storageErrorMessage(error)}`;
       } finally {
         event.target.value = "";
       }
@@ -2536,26 +2657,43 @@
       const file = event.target.files?.[0];
       if (!file) return;
       document.getElementById("metadataStatus").textContent = "正在读取发布信息表...";
+      const previousRows = state.metadataRows;
+      const previousFileName = state.metadataFileName;
+      let changed = false;
       try {
         const result = parsePublishInfoWorkbook(await file.arrayBuffer());
         const before = state.metadataRows.length;
         state.metadataRows = mergeMetadataRows(state.metadataRows, result.rows);
         state.metadataFileName = file.name;
-        saveState();
+        changed = true;
+        document.getElementById("metadataStatus").textContent = "正在保存发布信息表...";
+        await saveState({ metadataRows: true, throwOnError: true });
         render();
         document.getElementById("metadataStatus").textContent = `发布信息表导入成功：本次 ${result.rows.length} 行，累计 ${state.metadataRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.metadataRows.length)} 行；工作表：${result.sheetName}）。`;
       } catch (error) {
-        document.getElementById("metadataStatus").textContent = `发布信息表导入失败：${error.message || error}`;
+        if (changed) {
+          state.metadataRows = previousRows;
+          state.metadataFileName = previousFileName;
+          render();
+        }
+        document.getElementById("metadataStatus").textContent = `发布信息表导入失败：${storageErrorMessage(error)}`;
       } finally {
         event.target.value = "";
       }
     };
-    document.getElementById("clearData").onclick = () => {
+    document.getElementById("clearData").onclick = async () => {
       if (!confirm("确认清空当前项目的视频素材分析数据？")) return;
+      const previousState = state;
       state = structuredClone(defaultState);
-      saveState();
-      render();
-      document.getElementById("importStatus").textContent = "已清空视频数据。";
+      try {
+        await saveState({ detailRows: true, metadataRows: true, throwOnError: true });
+        render();
+        document.getElementById("importStatus").textContent = "已清空视频数据。";
+      } catch (error) {
+        state = previousState;
+        render();
+        document.getElementById("importStatus").textContent = `清空失败：${storageErrorMessage(error)}`;
+      }
     };
     document.getElementById("exportCtrAttribution").onclick = () => exportAttributionWorkbook("ctr");
     document.getElementById("exportConversionAttribution").onclick = () => exportAttributionWorkbook("conversion");
@@ -2576,6 +2714,17 @@
       URL.revokeObjectURL(a.href);
     };
     render();
+    hydrateLargeState().then(({ migratedDetailRows, migratedMetadataRows }) => {
+      render();
+      if (state.detailRows.length) {
+        document.getElementById("importStatus").textContent = `已加载视频明细 ${state.detailRows.length} 行；大容量存储已启用${migratedDetailRows ? "，旧数据已自动迁移" : ""}。`;
+      }
+      if (state.metadataRows.length) {
+        document.getElementById("metadataStatus").textContent = `已加载发布信息 ${state.metadataRows.length} 行${migratedMetadataRows ? "，旧数据已自动迁移" : ""}。`;
+      }
+    }).catch(error => {
+      document.getElementById("importStatus").textContent = `大容量存储加载失败：${storageErrorMessage(error)}`;
+    });
   </script>
 </body>
 </html>
