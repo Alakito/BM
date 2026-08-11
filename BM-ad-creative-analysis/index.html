@@ -711,6 +711,15 @@
       incoming.forEach(row => merged.set(keyFn(row), row));
       return [...merged.values()].sort((a, b) => String(a.date || "").localeCompare(String(b.date || "")));
     }
+    function detailDateBounds(rows) {
+      const dates = [...new Set((rows || []).map(row => row.date).filter(Boolean))].sort();
+      return { start: dates[0] || "", end: dates.at(-1) || "" };
+    }
+    function expandAnalysisRangeToImportedData(rows) {
+      const next = detailDateBounds(rows);
+      if (next.start && (!state.analysisStart || next.start < state.analysisStart)) state.analysisStart = next.start;
+      if (next.end && (!state.analysisEnd || next.end > state.analysisEnd)) state.analysisEnd = next.end;
+    }
     function detailRowKey(row) {
       return [row.date, row.videoId, row.productId, row.product || row.title || row.creator || ""].join("__");
     }
@@ -1849,12 +1858,8 @@
         const result = parseAdCreativeWorkbook(await file.arrayBuffer(), file.name);
         const before = state.detailRows.length;
         state.detailRows = mergeRows(state.detailRows, result.rows, detailRowKey);
+        expandAnalysisRangeToImportedData(state.detailRows);
         state.detailFileName = file.name;
-        if (!state.analysisStart || !state.analysisEnd) {
-          const dates = [...new Set(state.detailRows.map(row => row.date).filter(Boolean))].sort();
-          state.analysisStart = state.analysisStart || dates[0] || "";
-          state.analysisEnd = state.analysisEnd || dates.at(-1) || "";
-        }
         markUnsaved();
         render();
         document.getElementById("importStatus").textContent = `广告素材表导入成功：本次 ${result.rows.length} 行，累计 ${state.detailRows.length} 行（更新/覆盖 ${Math.max(0, before + result.rows.length - state.detailRows.length)} 行；工作表：${result.sheetName}；数据日期：${result.reportDate || "未识别"}）。当前未保存，请点击「保存数据」。`;
